@@ -1,175 +1,182 @@
-"""Remote Desktop Client Login UI
-===============================
+# Path: client/ui_login.py
+"""
+LoginWindow – Lightweight login form used by WindowManager.
 
-A PyQt-based login window that handles:
-- User authentication
-- Role selection (Controller/Target)
-- Server connection settings
-- Error handling and user feedback
-
-Design Philosophy:
-- Clean and minimal interface
-- Clear error messages
-- Persistent settings
+Signals
+-------
+login_attempt_signal(str base_addr, str username, str password, bool remember)
+register_signal()              – open registration form
+toggle_theme_signal()          – toggle light / dark theme
 """
 
+import logging
+import re
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout,
-                          QLabel, QLineEdit, QPushButton, QVBoxLayout)
+from PyQt5.QtGui import QIntValidator, QPixmap, QIcon
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCheckBox,
+    QPushButton
+)
 
-class LoginDialog(QDialog):
-    """Main login window with server connection and authentication.
-    
-    Signals:
-        login_success: Emitted with (username, password, role) on successful auth
-    """
-    
-    # Custom signal for successful login
-    login_success = pyqtSignal(str, str, str)
+log = logging.getLogger(__name__)
 
-    def __init__(self, parent=None):
-        """Initialize login window with all UI elements.
-        
-        Args:
-            parent: Parent widget, usually None for main window
-        """
-        super().__init__(parent)
-        self.setWindowTitle("Remote Desktop Login")
-        self.setFixedWidth(300)
-        
-        # Create and layout UI elements
-        self._init_ui()
-        self._connect_signals()
-        
-        # Load any saved settings
-        self._load_settings()
 
-    def _init_ui(self):
-        """Create and arrange all UI widgets.
-        
-        Layout:
-        - Server settings (host:port)
-        - Authentication (username/password)
-        - Role selection (Controller/Target)
-        - Action buttons (Login/Cancel)
-        """
-        # Main layout
-        layout = QVBoxLayout()
-        form = QFormLayout()
-        
-        # Server connection fields
-        self.host_edit = QLineEdit()
-        self.host_edit.setPlaceholderText("localhost")
-        self.port_edit = QLineEdit()
-        self.port_edit.setPlaceholderText("9009")
-        
-        # Login credentials
-        self.username_edit = QLineEdit()
-        self.password_edit = QLineEdit()
-        self.password_edit.setEchoMode(QLineEdit.Password)
-        
-        # Role selection dropdown
-        self.role_combo = QComboBox()
-        self.role_combo.addItems(["Controller", "Target"])
-        
-        # Add fields to form
-        form.addRow("Server:", self.host_edit)
-        form.addRow("Port:", self.port_edit)
-        form.addRow("Username:", self.username_edit)
-        form.addRow("Password:", self.password_edit)
-        form.addRow("Role:", self.role_combo)
-        
-        # Action buttons
-        btn_layout = QHBoxLayout()
+
+class LoginWindow(QWidget):
+    # -------------------------------------------------- signals
+    login_attempt_signal = pyqtSignal(str, str, str, bool)
+    register_signal = pyqtSignal()
+    toggle_theme_signal = pyqtSignal()
+
+    # -------------------------------------------------- defaults
+    DEFAULT_IP = "127.0.0.1"
+    DEFAULT_PORT = "9009"
+
+    # -------------------------------------------------- ctor
+    def __init__(self) -> None:
+        super().__init__()
+        self._build_ui()
+
+    # -------------------------------------------------- ui builder
+    def _build_ui(self) -> None:
+        self.setWindowTitle("SCU Remote Desktop — Login")
+        self.setMinimumWidth(420)
+
+        # ---------- Theme toggle (top‑right) ----------
+        top = QHBoxLayout()
+        top.addStretch()
+        self.theme_btn = QPushButton("🌙")
+        self.theme_btn.setCursor(Qt.PointingHandCursor)
+        self.theme_btn.setFlat(True)
+        self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
+        top.addWidget(self.theme_btn)
+        self._update_theme_icon("dark")  # Set default icon
+
+        # ---------- Main form ----------
+        body = QVBoxLayout()
+        body.setContentsMargins(30, 0, 30, 30)
+        body.setSpacing(15)
+
+        # Logo
+        logo_lbl = QLabel()
+        logo_lbl.setAlignment(Qt.AlignCenter)
+        pm = QPixmap("assets/icons/logo.png")
+        if not pm.isNull():
+            logo_lbl.setPixmap(pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        body.addWidget(logo_lbl)
+
+        # Title
+        title_lbl = QLabel("SCU Remote Desktop")
+        title_lbl.setAlignment(Qt.AlignCenter)
+        title_font = title_lbl.font()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_lbl.setFont(title_font)
+        body.addWidget(title_lbl)
+        body.addSpacing(15)
+
+        # Relay address (IP + port)
+        body.addWidget(QLabel("Relay server:"))
+        srv_row = QHBoxLayout()
+        self.ip_in = QLineEdit(self.DEFAULT_IP)
+        self.port_in = QLineEdit(self.DEFAULT_PORT)
+        self.port_in.setValidator(QIntValidator(1, 65535, self))
+        self.port_in.setFixedWidth(80)
+        srv_row.addWidget(self.ip_in, 3)
+        srv_row.addWidget(QLabel(":"), 0)
+        srv_row.addWidget(self.port_in, 1)
+        body.addLayout(srv_row)
+
+        # Username / password
+        body.addWidget(QLabel("Username:"))
+        self.user_in = QLineEdit()
+        body.addWidget(self.user_in)
+
+        body.addWidget(QLabel("Password:"))
+        self.pass_in = QLineEdit()
+        self.pass_in.setEchoMode(QLineEdit.Password)
+        body.addWidget(self.pass_in)
+
+        # Remember‑me
+        self.remember_chk = QCheckBox("Remember me")
+        self.remember_chk.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+                border: 1px solid #999;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:checked {
+                background-image: url(assets/icons/checkmark.svg);
+                background-position: center;
+                background-repeat: no-repeat;
+                border: 1px solid #0078d7;
+            }
+        """)
+        body.addWidget(self.remember_chk)
+        body.addSpacing(10)
+
+        # Buttons
         self.login_btn = QPushButton("Login")
         self.login_btn.setDefault(True)
-        self.cancel_btn = QPushButton("Cancel")
-        btn_layout.addWidget(self.login_btn)
-        btn_layout.addWidget(self.cancel_btn)
-        
-        # Status label for error messages
-        self.status_label = QLabel()
-        self.status_label.setStyleSheet("color: red")
-        
-        # Assemble final layout
-        layout.addLayout(form)
-        layout.addLayout(btn_layout)
-        layout.addWidget(self.status_label)
-        self.setLayout(layout)
+        self.login_btn.clicked.connect(self._on_login)
+        body.addWidget(self.login_btn)
 
-    def _connect_signals(self):
-        """Connect UI signals to their handlers."""
-        self.login_btn.clicked.connect(self._handle_login)
-        self.cancel_btn.clicked.connect(self.reject)
-        
-        # Enable login on Enter key
-        self.password_edit.returnPressed.connect(self._handle_login)
+        self.reg_btn = QPushButton("Sign Up")
+        self.reg_btn.clicked.connect(self.register_signal.emit)
+        body.addWidget(self.reg_btn)
 
-    def _handle_login(self):
-        """Validate input and emit login_success signal.
-        
-        Performs basic validation:
-        - All required fields filled
-        - Port is a valid number
-        - Username/password meet minimum requirements
-        """
-        # Clear any previous error
-        self.status_label.clear()
-        
-        # Validate required fields
-        if not all([self.username_edit.text(),
-                   self.password_edit.text()]):
-            self.status_label.setText("All fields are required")
+        # Error label (hidden by default)
+        self.err_lbl = QLabel("")
+        self.err_lbl.setAlignment(Qt.AlignCenter)
+        self.err_lbl.setStyleSheet("color:#e74c3c;")
+        self.err_lbl.hide()
+        body.addWidget(self.err_lbl)
+
+        # ---------- Final layout ----------
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 5, 0, 0)
+        root.addLayout(top)
+        root.addLayout(body)
+        self.user_in.setFocus()
+
+    # -------------------------------------------------- helpers
+    def _on_login(self) -> None:
+        ip, port = self.ip_in.text().strip(), self.port_in.text().strip()
+        user, pwd = self.user_in.text().strip(), self.pass_in.text()
+        remember = self.remember_chk.isChecked()
+
+        if not self._validate(ip, port, user):
             return
-            
-        # Validate port number
-        try:
-            port = int(self.port_edit.text() or "9009")
-            if not (0 < port < 65536):
-                raise ValueError()
-        except ValueError:
-            self.status_label.setText("Invalid port number")
-            return
-            
-        # Save settings and emit success signal
-        self._save_settings()
-        self.login_success.emit(
-            self.username_edit.text(),
-            self.password_edit.text(),
-            self.role_combo.currentText().lower()
-        )
-        self.accept()
 
-    def _save_settings(self):
-        """Save non-sensitive settings for next login."""
-        settings = {
-            "host": self.host_edit.text(),
-            "port": self.port_edit.text(),
-            "username": self.username_edit.text(),
-            "role": self.role_combo.currentText()
-        }
-        # Save to file/registry...
+        base_addr = f"{ip}:{port}"
+        log.info("Login attempt @ %s by %s", base_addr, user)
+        self.err_lbl.hide()
+        self.login_attempt_signal.emit(base_addr, user, pwd, remember)
 
-    def _load_settings(self):
-        """Load previously saved settings."""
-        # Load from file/registry...
-        pass
+    # basic sanity checks
+    def _validate(self, ip: str, port: str, user: str) -> bool:
+        if not ip:
+            return self._err("Server IP / hostname required.")
+        if not re.match(r"^(\d{1,3}\.){3}\d{1,3}$", ip) and "." not in ip:
+            return self._err("Invalid IP / hostname.")
+        if not port:
+            return self._err("Port required.")
+        if not user:
+            return self._err("Username required.")
+        return True
 
-    def show_error(self, message: str):
-        """Display error message in status label.
-        
-        Args:
-            message: Error message to display
-        """
-        self.status_label.setText(message)
-        self.status_label.setStyleSheet("color: red")
+    def _err(self, msg: str) -> bool:
+        self.err_lbl.setText(msg)
+        self.err_lbl.show()
+        return False
 
-    def show_success(self, message: str):
-        """Display success message in status label.
-        
-        Args:
-            message: Success message to display
-        """
-        self.status_label.setText(message)
-        self.status_label.setStyleSheet("color: green")
+    # ---------- theme-icon helper ----------
+    def _update_theme_icon(self, theme_name: str) -> None:
+        """Update moon / sun icon and tooltip according to current theme."""
+        if theme_name == "dark":
+            emoji, tip = "🌙", "Switch to Light Mode"
+        else:
+            emoji, tip = "☀️", "Switch to Dark Mode"
+        self.theme_btn.setText(emoji)
+        self.theme_btn.setToolTip(tip)

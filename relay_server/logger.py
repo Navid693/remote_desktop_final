@@ -21,8 +21,7 @@ class DBHandler(logging.Handler):
         try:
             # Keep only extras that are JSON‑serialisable
             extras: Dict[str, Any] = {
-                k: v
-                for k, v in record.__dict__.items()
+                k: str(v) for k, v in record.__dict__.items()
                 if k not in logging.LogRecord.__dict__
             }
             self.db.log(record.levelname, record.msg, extras)

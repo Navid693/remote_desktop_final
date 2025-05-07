@@ -135,3 +135,15 @@ class RelayServer:
 
             else:
                 send_json(info.sock, PacketType.ERROR, {"code": 400})
+# ---------------------------------------------------------------------------
+# CLI entry‑point
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Relay server")
+    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--port", type=int, default=9009)
+    args = ap.parse_args()
+
+    RelayServer(args.host, args.port).serve_forever()

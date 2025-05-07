@@ -1,0 +1,78 @@
+/* Chat Component Styling */
+
+/* Chat display */
+QTextEdit#chatDisplay {
+    background-color: #f5f5f5;
+    border: 1px solid #cccccc;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    padding: 5px;
+}
+
+/* Chat input field */
+QLineEdit#chatInput {
+    border: 1px solid #cccccc;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    padding: 8px;
+}
+
+/* Send button */
+QPushButton#sendButton {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-weight: bold;
+}
+
+QPushButton#sendButton:hover {
+    background-color: #0069d9;
+}
+
+QPushButton#sendButton:pressed {
+    background-color: #0062cc;
+}
+
+/* Chat container */
+QWidget#chatContainer {
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+/* Chat title */
+QLabel#chatTitle {
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    padding: 10px;
+}
+
+/* Dark Theme Support */
+QWidget#chatContainer[darkTheme="true"] {
+    background-color: #2d2d30;
+    border-color: #1e1e1e;
+}
+
+QTextEdit#chatDisplay[darkTheme="true"] {
+    background-color: #252526;
+    border-color: #1e1e1e;
+    color: #ffffff;
+}
+
+QLineEdit#chatInput[darkTheme="true"] {
+    background-color: #333333;
+    border-color: #1e1e1e;
+    color: #ffffff;
+}
+
+QLabel#chatTitle[darkTheme="true"] {
+    color: #ffffff;
+}
+
+/* Message bubble styles are handled in HTML directly in the code */ 
