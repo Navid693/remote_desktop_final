@@ -106,21 +106,19 @@ class Database:
     def register_user(self, username: str, password: str) -> Optional[int]:
         """
         Register a new user.
-        Returns the user id (int) if created or existing, None on error.
+        Returns the user id (int) if created, None if username exists or on error.
         """
         pw_hash = self._hash_pw(password)
         with self._cursor() as cur:
-            # check existing
-            cur.execute("SELECT id FROM users WHERE username = ?", (username,))
-            row = cur.fetchone()
-            if row:
-                return int(row["id"])
-            # insert new
-            cur.execute(
-                "INSERT INTO users(username, password) VALUES(?,?)",
-                (username, pw_hash),
-            )
-            return int(cur.lastrowid)
+            try:
+                cur.execute(
+                    "INSERT INTO users(username, password) VALUES(?,?)",
+                    (username, pw_hash),
+                )
+                return int(cur.lastrowid)
+            except sqlite3.IntegrityError:
+                # Username already exists (unique constraint)
+                return None
 
     def verify_user(self, username: str, password: str, ip: Optional[str] = None) -> Tuple[bool, Optional[int]]:
         """

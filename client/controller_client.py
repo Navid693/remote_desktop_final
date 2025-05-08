@@ -8,14 +8,22 @@ from shared.protocol import PacketType, send_json, recv
 
 class ControllerClient:
     def __init__(self, host: str, port: int, username: str, password: str) -> None:
-        self.sock = socket.create_connection((host, port))
-        self.username = username
-        send_json(self.sock, PacketType.AUTH_REQ, {"username": username, "password": password, "role": "controller"})
-        p, _ = recv(self.sock)
-        assert p is PacketType.AUTH_OK, "auth failed"
-
-        self._on_chat: Callable[[str, str], None] = lambda u, m: None
-        threading.Thread(target=self._reader, daemon=True).start()
+        self.sock = None
+        try:
+            self.sock = socket.create_connection((host, port))
+            self.username = username
+            send_json(self.sock, PacketType.AUTH_REQ, {"username": username, "password": password, "role": "controller"})
+            p, _ = recv(self.sock)
+            assert p is PacketType.AUTH_OK, "auth failed"
+            self._on_chat: Callable[[str, str, str], None] = lambda u, m, t: None
+            threading.Thread(target=self._reader, daemon=True).start()
+        except Exception:
+            if self.sock:
+                try:
+                    self.sock.close()
+                except Exception:
+                    pass
+            raise
 
     # -------- API --------
     def request_connect(self, target: str) -> None:
@@ -25,11 +33,10 @@ class ControllerClient:
         send_json(self.sock, PacketType.PERM_REQUEST,
                   {"target": target, "view": view, "mouse": mouse, "keyboard": keyboard})
 
-    def send_chat(self, text: str) -> None:
-        ts = datetime.utcnow().isoformat()
-        send_json(self.sock, PacketType.CHAT, {"text": text, "timestamp": ts})
+    def send_chat(self, text: str, sender: str, timestamp: str) -> None:
+        send_json(self.sock, PacketType.CHAT, {"sender": sender, "text": text, "timestamp": timestamp})
 
-    def on_chat(self, callback: Callable[[str, str], None]) -> None:
+    def on_chat(self, callback):
         self._on_chat = callback
 
     # -------- internal --------
@@ -37,4 +44,4 @@ class ControllerClient:
         while True:
             p, data = recv(self.sock)
             if p is PacketType.CHAT:
-                self._on_chat(data["sender"], data["text"])
+                self._on_chat(data["sender"], data["text"], data.get("timestamp", ""))

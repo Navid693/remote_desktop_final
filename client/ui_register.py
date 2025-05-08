@@ -12,7 +12,7 @@ import logging
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 )
 
 log = logging.getLogger(__name__)
@@ -124,3 +124,21 @@ class RegistrationWindow(QWidget):
             emoji, tip = "☀️", "Switch to Dark Mode"
         self.theme_btn.setText(emoji)
         self.theme_btn.setToolTip(tip)
+
+    def reset_form(self):
+        self.user_in.clear()
+        self.pwd_in.clear()
+        self.cpwd_in.clear()
+        self.err_lbl.hide()
+        self.reg_btn.setEnabled(True)
+        self.reg_btn.setText("Create account")
+
+    def show_error(self, message: str, title: str = "Error"):
+        """
+        Show a critical error dialog with the given message.
+        """
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.exec_()

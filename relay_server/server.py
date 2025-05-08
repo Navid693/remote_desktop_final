@@ -1,12 +1,21 @@
 # remote_desktop_final/relay_server/server.py
 from __future__ import annotations
-import socket, threading
+import socket, threading, signal
 from dataclasses import dataclass
 from typing import Dict, Optional
+import logging
+from socketserver import ThreadingTCPServer, StreamRequestHandler
+from shared.protocol import PacketType, recv, send_json
+import datetime
 
 from relay_server.database import Database
 from relay_server.logger import get_logger
-from shared.protocol import PacketType, recv, send_json
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] relay: %(message)s'
+)
+logger = logging.getLogger("relay")
 
 db = Database("relay.db")
 log = get_logger(db, "relay")
@@ -23,6 +32,69 @@ class ClientInfo:
     role: str
     session_id: Optional[int] = None
     permissions: dict = None   # view/mouse/keyboard
+
+
+class RelayHandler(StreamRequestHandler):
+    def setup(self):
+        super().setup()
+        if not hasattr(self.server, "clients"):
+            self.server.clients = []
+        self.server.clients.append(self.request)
+        self._username = None
+        self._client_addr = self.client_address
+
+    def finish(self):
+        try:
+            self.server.clients.remove(self.request)
+        except ValueError:
+            pass
+        # Log disconnect with as much info as possible
+        logger.info(f"[DISCONNECT] Client closed: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}")
+        super().finish()
+
+    def handle(self):
+        """
+        Handle incoming packets. Treat ConnectionError as a normal disconnect.
+        """
+        while True:
+            try:
+                pkt, data = recv(self.request)
+            except ConnectionError:
+                logger.info(f"[DISCONNECT] Client disconnected: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}")
+                return
+            except Exception:
+                logger.exception("Unexpected error in handler")
+                return
+
+            # AUTH_REQ handling
+            if pkt is PacketType.AUTH_REQ:
+                username = data.get("username")
+                password = data.get("password")
+                self._username = username
+                ok, user_id = db.verify_user(username, password)
+                if ok:
+                    send_json(self.request, PacketType.AUTH_OK, {"user_id": user_id})
+                    logger.info("AUTH_OK sent to %s", self.client_address)
+                else:
+                    send_json(self.request, PacketType.AUTH_FAIL, {})
+                    logger.info("AUTH_FAIL sent to %s", self.client_address)
+
+            # CHAT broadcast
+            elif pkt is PacketType.CHAT:
+                sender = data.get("sender", "Unknown")
+                text = data.get("text", "")
+                timestamp = data.get("timestamp") or datetime.datetime.now().isoformat(timespec='seconds')
+                logger.info(f"[CHAT] {timestamp} {sender}: {text}")
+                # Broadcast to all connected clients
+                for client_sock in list(getattr(self.server, "clients", [])):
+                    try:
+                        send_json(client_sock, PacketType.CHAT, {"sender": sender, "text": text, "timestamp": timestamp})
+                    except Exception as e:
+                        logger.warning(f"Failed to send chat to a client: {e}")
+
+            else:
+                # TODO: handle other PacketTypes
+                pass
 
 
 class RelayServer:
@@ -135,15 +207,25 @@ class RelayServer:
 
             else:
                 send_json(info.sock, PacketType.ERROR, {"code": 400})
+
+def main():
+    host, port = "0.0.0.0", 9009
+    ThreadingTCPServer.allow_reuse_address = True
+    server = ThreadingTCPServer((host, port), RelayHandler)
+    server.daemon_threads = True
+
+    logger.info("SERVER_START %s:%d", host, port)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received, shutting down server...")
+    finally:
+        server.shutdown()
+        server.server_close()
+        logger.info("SERVER_STOPPED")
+
 # ---------------------------------------------------------------------------
 # CLI entry‑point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Relay server")
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=9009)
-    args = ap.parse_args()
-
-    RelayServer(args.host, args.port).serve_forever()
+    main()

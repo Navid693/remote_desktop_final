@@ -2,7 +2,7 @@
 
 import logging
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 from client.ui_login import LoginWindow
 from client.ui_register import RegistrationWindow
 from client.ui_controller import ControllerWindow
@@ -99,10 +99,57 @@ class WindowManager(QObject):
         self.register_window.close()
 
     def show_main_window(self, username):
-        self._logger.info(f"Launching main window for user {username}")
+        self._logger.info(f"[{self._timestamp()}] Launching main window for user {username}")
         self.login_window.close()
         self.controller_window = ControllerWindow(username=username)
-        self.controller_window.logout_signal.connect(self.logout_requested.emit)
+        self.controller_window.logout_signal.connect(self._handle_logout)
+        self.controller_window.toggle_theme_signal.connect(self.toggle_theme)
         self.controller_window.show()
 
         # TODO: if role == target → show TargetWindow instead (when implemented)
+
+    def _handle_logout(self):
+        self._logger.info(f"[{self._timestamp()}] Logout requested; closing controller window and showing login window")
+        if self.controller_window:
+            self.controller_window.close()
+            self.controller_window = None
+        self.show_login_window()
+
+    def _timestamp(self):
+        from datetime import datetime
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    def show_message(self, message: str, title: str = "Info"):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.exec_()
+
+    def show_login_error(self, message: str, title: str = "Login Error"):
+        """
+        Display an error message in the login window with a custom title.
+        """
+        self.login_window.show_error(message, title=title)
+
+    def show_registration_error(self, message: str):
+        """
+        Display an error message in the registration window.
+        """
+        self.register_window.show_error(message)
+
+    def show_chat_error(self, message: str = "Failed to send message. Please try again."):
+        if self.controller_window:
+            self.controller_window.show_error(message)
+
+    def show_stream_error(self, message: str = "Failed to start screen sharing."):
+        if self.controller_window:
+            self.controller_window.show_error(message)
+
+    def show_stream_stop_error(self, message: str = "Failed to stop screen sharing."):
+        if self.controller_window:
+            self.controller_window.show_error(message)
+
+    def show_permission_error(self, message: str = "Failed to send permission request."):
+        if self.controller_window:
+            self.controller_window.show_error(message)
