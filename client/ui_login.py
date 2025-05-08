@@ -4,7 +4,7 @@ LoginWindow – Lightweight login form used by WindowManager.
 
 Signals
 -------
-login_attempt_signal(str base_addr, str username, str password, bool remember)
+login_attempt_signal(str host, int port, str username, str password, bool remember)
 register_signal()              – open registration form
 toggle_theme_signal()          – toggle light / dark theme
 """
@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 class LoginWindow(QWidget):
     # -------------------------------------------------- signals
-    login_attempt_signal = pyqtSignal(str, str, str, bool)
+    login_attempt_signal = pyqtSignal(str, int, str, str, bool)  # host, port, username, password, remember
     register_signal = pyqtSignal()
     toggle_theme_signal = pyqtSignal()
 
@@ -149,10 +149,9 @@ class LoginWindow(QWidget):
         if not self._validate(ip, port, user):
             return
 
-        base_addr = f"{ip}:{port}"
-        log.info("Login attempt @ %s by %s", base_addr, user)
+        log.info("Login attempt @ %s:%s by %s", ip, port, user)
         self.err_lbl.hide()
-        self.login_attempt_signal.emit(base_addr, user, pwd, remember)
+        self.login_attempt_signal.emit(ip, int(port), user, pwd, remember)
 
     # basic sanity checks
     def _validate(self, ip: str, port: str, user: str) -> bool:

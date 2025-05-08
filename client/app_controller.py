@@ -1,174 +1,122 @@
-# Path: client/app_controller.py
+"""
+client/app_controller.py
 
+Orchestrates UI <-> RemoteClient <-> Database.
+Handles login, mode switching (view/share), chat, frames, input, and logout.
+"""
+
+import sys
 import logging
+from PyQt5.QtWidgets import QApplication
+from client.window_manager import WindowManager
+from client.remote_client import RemoteClient
 from relay_server.database import Database
-from client.controller_client import ControllerClient
-from urllib.parse import urlparse
-import socket
-import datetime
 
 logger = logging.getLogger("AppController")
 
 class AppController:
-    """
-    Coordinates UI ↔ Database ↔ ControllerClient/TargetClient.
-    """
-
     def __init__(self, window_manager):
-        self.wm = window_manager
-        self.db = Database("relay.db")
+        # Initialize database, client and UI
+        self.db     = Database("relay.db")
         self.client = None
+        self.wm     = window_manager
 
-        # وصل کردن سیگنال‌های UI
+        # Connect WindowManager signals to controller methods
         self.wm.login_requested.connect(self.handle_login)
-        self.wm.registration_requested.connect(self.handle_registration)
+        self.wm.mode_changed.connect(self.handle_mode_change)
+        self.wm.send_chat_signal.connect(self._on_send_chat)
         self.wm.logout_requested.connect(self.handle_logout)
 
     def run(self):
-        """Show the login window at startup."""
+        """Start the application event loop."""
         self.wm.show_login_window()
+        sys.exit(QApplication.instance().exec_())
 
-    def handle_registration(self, username: str, password: str, confirm: str):
-        logger.info("Registering user=%s", username)
-        if not username:
-            self.wm.show_registration_error("Username is required.")
+    def handle_login(self, host, port, username, password, remember_me):
+        """Attempt TCP connection and authentication."""
+        logger.info(f"Login attempt: {username}@{host}:{port} (remember_me={remember_me})")
+        # Basic validation
+        if not host or not username or not password:
+            self.wm.show_login_error("Host, username and password are required.")
             return
-        if not password:
-            self.wm.show_registration_error("Password is required.")
-            return
-        if not confirm:
-            self.wm.show_registration_error("Please confirm your password.")
-            return
-        if password != confirm:
-            self.wm.show_registration_error("Passwords do not match.")
-            return
-        try:
-            user_id = self.db.register_user(username, password)
-        except Exception:
-            self.wm.show_registration_error("Internal error occurred. Please contact support.")
-            logger.exception("Internal DB error during registration")
-            return
-        if user_id is None:
-            self.wm.show_registration_error("Username already exists.")
-            return
-        self.db.log("INFO", "USER_REGISTERED", {"username": username, "user_id": user_id})
-        logger.info("Registration successful (id=%d)", user_id)
-        self.wm.close_registration_window_on_success()
-        self.wm.register_window.reset_form()
-        self.wm.show_message(f"Registration successful! Welcome, {username} (ID: {user_id}). You can now log in.")
-        self.wm.show_login_window()
-
-    def handle_login(self, backend_url: str, username: str, password: str, remember: bool):
-        logger.info("Login attempt @ %s by %s", backend_url, username)
-
-        # Basic input validation
-        if not backend_url.strip():
-            self.wm.show_login_error("Server address is required.", title="Login Error")
-            return
-        if not username.strip():
-            self.wm.show_login_error("Username is required.", title="Login Error")
-            return
-        if not password:
-            self.wm.show_login_error("Password is required.", title="Login Error")
-            return
-
-        # Parse host and port
-        host = None; port = None
-        if "://" in backend_url:
-            parsed = urlparse(backend_url)
-            host = parsed.hostname
-            port = parsed.port
-        else:
-            if ":" in backend_url:
-                h, p = backend_url.split(":", 1)
-                host = h
-                try:
-                    port = int(p)
-                except ValueError:
-                    self.wm.show_login_error(
-                        "The port number is invalid. Please enter a valid port (e.g., 9009).",
-                        title="Port Error"
-                    )
-                    return
-            else:
-                host = backend_url
-        if not host:
-            self.wm.show_login_error(
-                "The server address is invalid. Please enter a valid IP address or hostname.",
-                title="Address Error"
-            )
-            return
-        if not port:
-            port = 9009
 
         try:
-            logger.info("Connecting to Relay @ %s:%d", host, port)
-            client = ControllerClient(host, port, username, password)
-        except (ConnectionRefusedError, socket.timeout):
-            self.wm.show_login_error(
-                f"Unable to connect to the server at {host}:{port}. Please check the address and ensure the server is running.",
-                title="Connection Error"
+            # Create unified client and connect
+            self.client = RemoteClient(
+                host, port, username, password,
+                on_chat=self._on_chat_received,
+                on_frame=self._on_frame_received,
+                on_input=self._on_input_received,
+                on_disconnect=self._on_server_disconnect
             )
-            logger.error("Connection refused or timed out for %s:%d", host, port)
-            return
-        except socket.gaierror:
-            self.wm.show_login_error(
-                f"The server address '{host}' is invalid. Please enter a valid IP address or hostname.",
-                title="Address Error"
-            )
-            logger.error("Invalid server address: %s", host)
-            return
-        except AssertionError:
-            self.wm.show_login_error(
-                "Incorrect username or password. Please try again.",
-                title="Authentication Error"
-            )
-            logger.error("Auth failed for user '%s'", username)
-            return
+            self.client.connect()
         except Exception as e:
-            logger.exception("Network error during connection")
-            self.wm.show_login_error(
-                f"A network error occurred: {e}. Please check your connection and try again.",
-                title="Network Error"
-            )
+            logger.exception("Connection/auth failed")
+            self.wm.show_login_error("Cannot connect or authenticate.")
             return
 
-        # 2) If auth is successful, update DB and show main window
-        self.client = client
-        ok, user_id = self.db.verify_user(username, password)
-        if not ok:
-            self.wm.show_login_error(
-                "Incorrect username or password. Please try again.",
-                title="Authentication Error"
-            )
-            logger.error("DB verify failed for user '%s'", username)
-            return
-        self.db.log("INFO", "AUTH_SUCCESS", {"username": username, "user_id": user_id})
-        logger.info("Login successful (id=%d)", user_id)
+        # Log success in DB
+        self.db.log("INFO", "AUTH_SUCCESS", {"username": username, "remember_me": remember_me})
+        logger.info("Authenticated successfully")
+
+        # Show main window
         self.wm.show_main_window(username)
-        win = self.wm.controller_window
 
-        # 1) Send message from UI to server (with sender and timestamp)
-        win.chat_send_button.clicked.connect(lambda: self._send_and_clear(win, username))
-        win.chat_input.returnPressed.connect(lambda: self._send_and_clear(win, username))
+    def handle_mode_change(self, mode, **kwargs):
+        """
+        Switch between 'view' and 'share' modes.
+        kwargs for 'view': target_uid
+        kwargs for 'share': capture_func, quality, scale
+        """
+        logger.info(f"Switching mode → {mode}")
+        self.db.log("INFO", "MODE_CHANGE", {"mode": mode})
 
-        # 2) Receive message from server and update UI (with sender, text, timestamp)
-        # Use the chat_message_signal for thread-safe UI updates
-        self.client.on_chat(lambda sender, text, timestamp: win.chat_message_signal.emit(sender, text, timestamp))
+        if mode == "view":
+            uid = kwargs.get("target_uid")
+            self.client.request_view(uid)
+        elif mode == "share":
+            self.client.start_sharing(
+                capture_func=kwargs.get("capture_func"),
+                quality=kwargs.get("quality", 75),
+                scale=kwargs.get("scale", 100)
+            )
+        else:
+            logger.warning(f"Unknown mode: {mode}")
 
-    def _send_and_clear(self, win, username):
-        text = win.chat_input.text().strip()
-        if not text:
-            return
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        try:
-            self.client.send_chat(text, sender=username, timestamp=timestamp)
-            win.chat_input.clear()
-        except Exception as e:
-            logger.exception("Failed to send chat message")
-            self.wm.show_chat_error(f"Failed to send message: {e}")
+    def _on_send_chat(self, text):
+        """Called when user clicks Send in chat UI."""
+        if self.client:
+            self.client.send_chat(text)
+
+    def _on_chat_received(self, sender, text):
+        """Display incoming chat in UI."""
+        self.wm.append_chat_message(f"{sender}: {text}")
+
+    def _on_frame_received(self, img):
+        """Render incoming frame in UI."""
+        self.wm.update_screen(img)
+
+    def _on_input_received(self, data):
+        """Apply remote input events in UI."""
+        self.wm.apply_remote_input(data)
+
+    def _on_server_disconnect(self):
+        """Handle unexpected disconnects."""
+        logger.info("Server disconnected")
+        self.wm.show_message("-- Server disconnected --", title="Disconnected")
+        self.client = None  # Ensure client is reset
+        self.wm.show_login_window()
 
     def handle_logout(self):
+        """User requested logout: clean up and show login."""
         logger.info("Logout requested")
-        # TODO: cleanup self.client, close session
+        if self.client:
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None  # Ensure client is reset
         self.wm.show_login_window()
+
+if __name__ == "__main__":
+    AppController().run()

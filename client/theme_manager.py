@@ -28,16 +28,26 @@ class ThemeManager(QObject):
             filename = os.path.join(STYLES_DIR, "light_styles.qss")
         else:
             filename = os.path.join(STYLES_DIR, f"{theme_name}.qss")
+        
+        self._logger.info(f"Loading stylesheet from: {filename}")
         try:
             with open(filename, "r", encoding="utf-8") as f:
-                return f.read()
+                content = f.read()
+                self._logger.info(f"Successfully loaded stylesheet: {len(content)} bytes")
+                return content
         except FileNotFoundError:
-            self._logger.warning(f"Stylesheet not found for theme: {theme_name}")
+            self._logger.error(f"Stylesheet not found for theme: {theme_name}")
+            return ""
+        except Exception as e:
+            self._logger.error(f"Error loading stylesheet: {str(e)}")
             return ""
 
     def apply_theme(self, widget, theme_name):
         content = self._load_stylesheet_content(theme_name)
-        widget.setStyleSheet(content)
-        self._current_theme = theme_name
-        self.theme_changed.emit(theme_name)
-        self._logger.info(f"Applied theme: {theme_name}")
+        if content:
+            widget.setStyleSheet(content)
+            self._current_theme = theme_name
+            self.theme_changed.emit(theme_name)
+            self._logger.info(f"Applied theme: {theme_name}")
+        else:
+            self._logger.error(f"Failed to apply theme: {theme_name} - no content loaded")

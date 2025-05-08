@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QPlainTextEdit, QLineEdit, QStatusBar, QSizePolicy, QMessageBox, QTextEdit
 )
+from PIL import Image
 
 log = logging.getLogger(__name__)
 
@@ -47,24 +48,34 @@ class ControllerWindow(QMainWindow):
         self.resize(1000, 700)
 
         # Toolbar
-        tb = self.addToolBar("Top")
-        tb.setMovable(False)
-        tb.setFloatable(False)
+        toolbar = self.addToolBar("Top")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
 
         self.theme_btn = QPushButton("🌙")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setFlat(True)
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
-        tb.addWidget(self.theme_btn)
+        toolbar.addWidget(self.theme_btn)
+
+        # --- View Remote Button ---
+        self.view_button = QPushButton("View Remote")
+        self.view_button.setToolTip("Request to view a peer's screen")
+        toolbar.addWidget(self.view_button)
+
+        # --- Share My Screen Button ---
+        self.share_button = QPushButton("Share My Screen")
+        self.share_button.setToolTip("Start sharing your screen")
+        toolbar.addWidget(self.share_button)
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        tb.addWidget(spacer)
+        toolbar.addWidget(spacer)
 
         logout_btn = QPushButton("Logout")
         logout_btn.setFlat(True)
         logout_btn.clicked.connect(self.logout_signal.emit)
-        tb.addWidget(logout_btn)
+        toolbar.addWidget(logout_btn)
 
         # Central layout
         central = QWidget()
@@ -176,3 +187,8 @@ class ControllerWindow(QMainWindow):
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.exec_()
+
+    # The actual capture function you need to implement in this class:
+    def capture_screen(self) -> Image:
+        # TODO: implement actual screen capture returning PIL.Image
+        pass

@@ -9,14 +9,20 @@ from client.ui_controller import ControllerWindow
 # from client.ui_target import TargetWindow  # TODO: Uncomment once implemented
 
 class WindowManager(QObject):
-    login_requested = pyqtSignal(str, str, str, bool)
+    login_requested = pyqtSignal(str, int, str, str, bool)   # host, port, username, password, remember_me
     registration_requested = pyqtSignal(str, str, str)
     logout_requested = pyqtSignal()
+    mode_changed = pyqtSignal(str, dict)            # e.g. ("view", {"target_uid":...})
+    send_chat_signal = pyqtSignal(str)                  # chat text
 
     def __init__(self, theme_manager):
         super().__init__()
         self._logger = logging.getLogger(__name__)
         self.theme_manager = theme_manager
+
+        # Apply initial theme to the whole application
+        app = QApplication.instance()
+        self.theme_manager.apply_theme(app, self.theme_manager.get_current_theme())
 
         self.login_window = LoginWindow()
         self.register_window = RegistrationWindow()
@@ -107,6 +113,20 @@ class WindowManager(QObject):
         self.controller_window.show()
 
         # TODO: if role == target → show TargetWindow instead (when implemented)
+
+        # --- Connect UI widgets to new signals ---
+        win = self.controller_window
+        win.view_button.clicked.connect(lambda: self.mode_changed.emit(
+            "view", {"target_uid": win.peer_input.text()}
+        ))
+        win.share_button.clicked.connect(lambda: self.mode_changed.emit(
+            "share", {
+                "capture_func": win.capture_screen,
+                "quality": win.quality_slider.value(),
+                "scale": win.scale_slider.value()
+            }
+        ))
+        win.chat_send_button.clicked.connect(lambda: self.send_chat_signal.emit(win.chat_input.text()))
 
     def _handle_logout(self):
         self._logger.info(f"[{self._timestamp()}] Logout requested; closing controller window and showing login window")
