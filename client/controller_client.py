@@ -2,20 +2,23 @@
 import json, socket, threading, time
 from datetime import datetime
 from typing import Callable
+import logging
 
 from shared.protocol import PacketType, send_json, recv
+
+logger = logging.getLogger(__name__)
 
 
 class ControllerClient:
     def __init__(self, host: str, port: int, username: str, password: str) -> None:
         self.sock = None
+        self.username = username
+        self._chat_callback = None
         try:
             self.sock = socket.create_connection((host, port))
-            self.username = username
             send_json(self.sock, PacketType.AUTH_REQ, {"username": username, "password": password, "role": "controller"})
             p, _ = recv(self.sock)
             assert p is PacketType.AUTH_OK, "auth failed"
-            self._on_chat: Callable[[str, str, str], None] = lambda u, m, t: None
             threading.Thread(target=self._reader, daemon=True).start()
         except Exception:
             if self.sock:
@@ -33,15 +36,63 @@ class ControllerClient:
         send_json(self.sock, PacketType.PERM_REQUEST,
                   {"target": target, "view": view, "mouse": mouse, "keyboard": keyboard})
 
-    def send_chat(self, text: str, sender: str, timestamp: str) -> None:
-        send_json(self.sock, PacketType.CHAT, {"sender": sender, "text": text, "timestamp": timestamp})
-
     def on_chat(self, callback):
-        self._on_chat = callback
+        """Register callback for incoming chat messages: callback(sender, text, timestamp)"""
+        self._chat_callback = callback
+
+    def send_chat(self, text: str, sender: str = None, timestamp: str = None) -> None:
+        """Send a chat message to the server."""
+        if not self.sock:
+            raise ConnectionError("Not connected")
+        if not timestamp:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        if not sender:
+            sender = self.username
+            
+        send_json(self.sock, PacketType.CHAT, {
+            "text": text,
+            "sender": sender,
+            "timestamp": timestamp
+        })
 
     # -------- internal --------
     def _reader(self):
+        """Background thread that reads packets from the server."""
         while True:
-            p, data = recv(self.sock)
-            if p is PacketType.CHAT:
-                self._on_chat(data["sender"], data["text"], data.get("timestamp", ""))
+            try:
+                p, data = recv(self.sock)
+                self._handle_packet(p, data)
+            except ConnectionError:
+                logger.info("Connection closed by server")
+                break
+            except Exception as e:
+                logger.exception("Error in reader thread")
+                break
+
+    def _handle_packet(self, ptype: PacketType, data: dict) -> None:
+        """Handle incoming packets from the server."""
+        if ptype is PacketType.CHAT:
+            if self._chat_callback:
+                sender = data.get("sender", "Unknown")
+                text = data.get("text", "")
+                timestamp = data.get("timestamp", "")
+                self._chat_callback(sender, text, timestamp)
+        elif ptype is PacketType.ERROR:
+            code = data.get("code", 0)
+            reason = data.get("reason", "Unknown error")
+            raise ConnectionError(f"Server error {code}: {reason}")
+        else:
+            raise ConnectionError(f"Unexpected packet type: {ptype}")
+
+    def disconnect(self):
+        """Cleanly disconnect from the server."""
+        if self.sock:
+            try:
+                send_json(self.sock, PacketType.DISCONNECT, {})
+            except Exception:
+                pass
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None

@@ -11,11 +11,13 @@ toggle_theme_signal()          – toggle light / dark theme
 
 import logging
 import re
+import json
+import os
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIntValidator, QPixmap, QIcon
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCheckBox,
-    QPushButton, QMessageBox
+    QPushButton, QMessageBox, QMainWindow
 )
 
 log = logging.getLogger(__name__)
@@ -119,10 +121,42 @@ class LoginWindow(QWidget):
         # Buttons
         self.login_btn = QPushButton("Login")
         self.login_btn.setDefault(True)
+        self.login_btn.setStyleSheet("""
+            QPushButton {
+                background: #3498db;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: #2980b9;
+            }
+            QPushButton:pressed {
+                background: #2472a4;
+            }
+        """)
         self.login_btn.clicked.connect(self._on_login)
         body.addWidget(self.login_btn)
 
-        self.reg_btn = QPushButton("Sign Up")
+        self.reg_btn = QPushButton("Sign Up")
+        self.reg_btn.setStyleSheet("""
+            QPushButton {
+                background: #2ecc71;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: #27ae60;
+            }
+            QPushButton:pressed {
+                background: #219a52;
+            }
+        """)
         self.reg_btn.clicked.connect(self.register_signal.emit)
         body.addWidget(self.reg_btn)
 
@@ -139,21 +173,56 @@ class LoginWindow(QWidget):
         root.addLayout(top)
         root.addLayout(body)
         self.user_in.setFocus()
+        
+        # Load saved credentials if remember me was checked
+        self._load_saved_credentials()
 
     # -------------------------------------------------- helpers
     def _on_login(self) -> None:
         ip, port = self.ip_in.text().strip(), self.port_in.text().strip()
         user, pwd = self.user_in.text().strip(), self.pass_in.text()
         remember = self.remember_chk.isChecked()
-
+        
         if not self._validate(ip, port, user):
             return
-
+        
+        # Save credentials if remember me is checked
+        self._save_credentials()
+            
         base_addr = f"{ip}:{port}"
         log.info("Login attempt @ %s by %s", base_addr, user)
         self.err_lbl.hide()
         self.login_attempt_signal.emit(base_addr, user, pwd, remember)
 
+    def _load_saved_credentials(self):
+        try:
+            with open("credentials.json", "r") as f:
+                data = json.load(f)
+                if data.get("remember_me", False):
+                    self.user_in.setText(data.get("username", ""))
+                    self.pass_in.setText(data.get("password", ""))
+                    self.remember_chk.setChecked(True)
+        except:
+            pass
+
+    def _save_credentials(self):
+        if self.remember_chk.isChecked():
+            data = {
+                "username": self.user_in.text(),
+                "password": self.pass_in.text(),
+                "remember_me": True
+            }
+            try:
+                with open("credentials.json", "w") as f:
+                    json.dump(data, f)
+            except:
+                pass
+        else:
+            try:
+                os.remove("credentials.json")
+            except:
+                pass
+                
     # basic sanity checks
     def _validate(self, ip: str, port: str, user: str) -> bool:
         if not ip:

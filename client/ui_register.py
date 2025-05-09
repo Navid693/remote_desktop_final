@@ -78,6 +78,22 @@ class RegistrationWindow(QWidget):
         body.addSpacing(10)
 
         self.reg_btn = QPushButton("Create account")
+        self.reg_btn.setStyleSheet("""
+            QPushButton {
+                background: #2ecc71;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: #27ae60;
+            }
+            QPushButton:pressed {
+                background: #219a52;
+            }
+        """)
         self.reg_btn.setDefault(True)
         self.reg_btn.clicked.connect(self._on_register)
         body.addWidget(self.reg_btn)
@@ -142,3 +158,6 @@ class RegistrationWindow(QWidget):
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.exec_()
+        # Reset the registration button state
+        self.reg_btn.setEnabled(True)
+        self.reg_btn.setText("Create account")

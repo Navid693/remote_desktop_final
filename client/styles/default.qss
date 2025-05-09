@@ -1,17 +1,17 @@
 /* styles.qss - Navy Dark Theme */
 
+QMainWindow, QDialog {
+    background: #1e272e;
+    color: #f5f6fa;
+}
+
 QWidget {
-    background-color: #1a2035; /* Dark navy background */
-    color: #ffffff;
+    background: #1e272e;
+    color: #f5f6fa;
     font-family: Segoe UI, Arial, sans-serif; /* Consistent font */
     font-size: 10pt;
     /* Disable border on base QWidget to prevent double borders */
     border: none;
-}
-
-QMainWindow {
-    background-color: #1a2035; /* Dark navy background */
-    color: #ffffff;
 }
 
 QGroupBox {
@@ -30,51 +30,38 @@ QGroupBox::title {
 }
 
 QPushButton {
-    background-color: #0078d4; /* Default button blue */
-    color: #ffffff;
+    background: #0984e3;
+    color: white;
     border: none;
     border-radius: 4px;
     padding: 8px 16px;
+    font-weight: bold;
 }
 
 QPushButton:hover {
-    background-color: #106ebe;
+    background: #0078d7;
+}
+
+QPushButton:pressed {
+    background: #00669b;
 }
 
 QPushButton:disabled {
-    background-color: #666666;
-    color: #999999;
+    background: #607d8b;
+    color: #dcdde1;
 }
 
-/* Special button styles for login page - Keep These (Original Intent) */
-/* NOTE: These were overridden by a later rule, now removed */
-/*
-QPushButton#login_button {
-    background-color: #3a6fbf; /* Blue instead of navy * /
-    color: #ffffff;
-    font-weight: bold;
-    min-height: 30px; /* Taller than regular buttons * /
+QPushButton#green_btn {
+    background: #00b894;
 }
 
-QPushButton#login_button:hover {
-    background-color: #4a7fd0; /* Lighter blue on hover * /
+QPushButton#green_btn:hover {
+    background: #00a885;
 }
 
-QPushButton#login_button:pressed {
-    background-color: #2a5fa9; /* Darker blue when pressed * /
+QPushButton#green_btn:pressed {
+    background: #009874;
 }
-
-QPushButton#register_button {
-    background-color: #446a1f; /* Green color * /
-    color: #ffffff;
-}
-
-QPushButton#register_button:hover {
-    background-color: #548a2f; /* Lighter green on hover * /
-}
-*/
-/* The above block seems different from the later LoginWindow block, */
-/* consider removing or consolidating if not used elsewhere */
 
 QPushButton#guest_button {
     background-color: #344566; /* Standard navy */
@@ -82,28 +69,27 @@ QPushButton#guest_button {
 }
 
 QLineEdit, QTextEdit, QPlainTextEdit {
-    background-color: #283550; /* Lighter navy for input fields */
-    color: #ffffff;
-    border: 1px solid #344566;
+    background: #2d3436;
+    color: #f5f6fa;
+    border: 1px solid #3d4852;
     border-radius: 4px;
-    padding: 5px;
+    padding: 8px;
+    selection-background-color: #0984e3;
 }
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 1px solid #455b82;
-    background-color: #2d3c5c;
+    border: 1px solid #0984e3;
 }
 
 QLabel {
-    background-color: transparent; /* Labels usually transparent */
-    color: #ffffff;
+    color: #f5f6fa;
+    background: transparent;
     border: none; /* Ensure labels don't get borders */
     padding: 2px; /* Add slight padding for spacing */
 }
 
 /* Login Window specific title labels */
 QLabel#title_label1 {
-    color: #ffffff;
     font-size: 14pt;
     font-weight: bold;
     padding: 5px;
@@ -125,34 +111,34 @@ QLabel#error_label {
 }
 
 QCheckBox {
-    color: #ffffff;
-    font-size: 14px; /* Default Checkbox size */
+    color: #f5f6fa;
+    spacing: 8px;
 }
 
 QCheckBox::indicator {
-    width: 20px;
-    height: 20px;
-}
-
-QCheckBox::indicator:unchecked {
-    border: 2px solid #666666;
-    background-color: #2d2d2d;
+    width: 18px;
+    height: 18px;
+    border: 1px solid #3d4852;
+    border-radius: 3px;
+    background: #2d3436;
 }
 
 QCheckBox::indicator:checked {
-    border: 2px solid #0078d4;
-    background-color: #0078d4;
+    background-image: url(assets/icons/checkmark.svg);
+    background-position: center;
+    background-repeat: no-repeat;
+    border-color: #0984e3;
 }
 
 QStatusBar {
-    background-color: #2d2d2d;
-    color: #ffffff;
+    background: #2d3436;
+    color: #dcdde1;
+    border-top: 1px solid #3d4852;
 }
 
 QStatusBar::item {
     border: none; /* Remove borders between items */
 }
-
 
 QComboBox {
     border: 1px solid #344566;
@@ -217,21 +203,20 @@ QScrollArea {
 
 QScrollBar:vertical {
     border: none;
-    background: #202940;
-    width: 10px;
-    margin: 0px 0px 0px 0px;
+    background: #2d3436;
+    width: 12px;
+    margin: 0px;
 }
 QScrollBar::handle:vertical {
-    background: #455b82;
+    background: #3d4852;
     min-height: 20px;
-    border-radius: 5px;
+    border-radius: 3px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #566d99;
+    background: #4a5662;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
-    background: none;
 }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     background: none;
@@ -270,9 +255,10 @@ ScreenDisplayWidget { /* Use Class Name */
 
 /* Theme toggle toolbar styling */
 QToolBar {
-    background-color: #2d2d2d;
-    border: none;
-    spacing: 10px;
+    background: #2d3436;
+    border-bottom: 1px solid #3d4852;
+    spacing: 8px;
+    padding: 8px;
 }
 
 /* Theme toggle button on login page */
@@ -331,21 +317,26 @@ QPushButton#chat_send_button {
 }
 
 /* --- Login Window Specific Styles --- */
-LoginWindow { /* Use Class Name */
+LoginWindow, RegistrationWindow { /* Apply to both windows */
     background-color: #1a2035; /* Match main background */
 }
-#LoginWindow { /* Use Object Name if set */
+#LoginWindow, #RegistrationWindow { /* Apply to both windows */
     background-color: #1a2035; /* Match main background */
 }
 
-
-/* Style the labels within LoginWindow */
+/* Style the labels within LoginWindow and RegistrationWindow */
 LoginWindow QLabel#backend_label,
 LoginWindow QLabel#username_label,
 LoginWindow QLabel#password_label,
+RegistrationWindow QLabel#username_label,
+RegistrationWindow QLabel#password_label,
+RegistrationWindow QLabel#confirm_password_label,
 #LoginWindow QLabel#backend_label,
 #LoginWindow QLabel#username_label,
-#LoginWindow QLabel#password_label {
+#LoginWindow QLabel#password_label,
+#RegistrationWindow QLabel#username_label,
+#RegistrationWindow QLabel#password_label,
+#RegistrationWindow QLabel#confirm_password_label {
     padding-bottom: 2px; /* Less bottom padding */
     padding-top: 8px; /* More top padding */
     font-size: 9pt; /* Slightly smaller labels */
@@ -354,30 +345,38 @@ LoginWindow QLabel#password_label,
 
 /* Logo placeholder specific styling */
 LoginWindow QLabel#logo_label,
-#LoginWindow QLabel#logo_label {
+RegistrationWindow QLabel#logo_label,
+#LoginWindow QLabel#logo_label,
+#RegistrationWindow QLabel#logo_label {
      min-height: 100px;
      padding-bottom: 10px; /* Space below logo */
 }
 
 /* Title labels specific styling */
 LoginWindow QLabel#title_label1,
-#LoginWindow QLabel#title_label1 {
+RegistrationWindow QLabel#title_label1,
+#LoginWindow QLabel#title_label1,
+#RegistrationWindow QLabel#title_label1 {
      font-size: 14pt;
      font-weight: bold;
      padding-bottom: 0px;
      color: #ffffff;
 }
 LoginWindow QLabel#title_label2,
-#LoginWindow QLabel#title_label2 {
+RegistrationWindow QLabel#title_label2,
+#LoginWindow QLabel#title_label2,
+#RegistrationWindow QLabel#title_label2 {
      font-size: 10pt;
      color: #aaaaaa;
      padding-top: 0px;
      padding-bottom: 5px; /* Space below subtitle */
 }
 
-/* Input fields in LoginWindow */
+/* Input fields in both windows */
 LoginWindow QLineEdit,
-#LoginWindow QLineEdit {
+RegistrationWindow QLineEdit,
+#LoginWindow QLineEdit,
+#RegistrationWindow QLineEdit {
      font-size: 11pt;
      padding: 8px;
      border-radius: 5px;
@@ -418,11 +417,10 @@ LoginWindow QCheckBox#remember_me_checkbox::indicator:hover,
      border-color: #455b82; /* Added from later definition */
 }
 
-
 /* Login and Register buttons in LoginWindow - THESE ARE THE CORRECT ONES */
 LoginWindow QPushButton#login_button,
 #LoginWindow QPushButton#login_button {
-    background-color: #4CAF50; /* Green */
+    background-color: #3a6fbf; /* Blue */
     color: #ffffff;
     border: none;
     border-radius: 4px;
@@ -435,17 +433,17 @@ LoginWindow QPushButton#login_button,
 
 LoginWindow QPushButton#login_button:hover,
 #LoginWindow QPushButton#login_button:hover {
-    background-color: #66BB6A;
+    background-color: #4a7fd0;
 }
 
 LoginWindow QPushButton#login_button:pressed,
 #LoginWindow QPushButton#login_button:pressed {
-    background-color: #388E3C;
+    background-color: #2a5fa9;
 }
 
 LoginWindow QPushButton#register_button,
 #LoginWindow QPushButton#register_button {
-    background-color: #3a6fbf; /* Blue */
+    background-color: #4CAF50; /* Green */
     color: #ffffff;
     border: none;
     border-radius: 4px;
@@ -458,12 +456,12 @@ LoginWindow QPushButton#register_button,
 
 LoginWindow QPushButton#register_button:hover,
 #LoginWindow QPushButton#register_button:hover {
-    background-color: #4a7fd0;
+    background-color: #66BB6A;
 }
 
 LoginWindow QPushButton#register_button:pressed,
 #LoginWindow QPushButton#register_button:pressed {
-    background-color: #2a5fa9;
+    background-color: #388E3C;
 }
 
 /* Error label in LoginWindow */
@@ -572,6 +570,15 @@ QToolBar#main_toolbar QPushButton#toolbar_logout_button:pressed {
     background-color: #404a60;
 }
 
+QToolBar#main_toolbar QPushButton#log_button:pressed,
+QToolBar#main_toolbar QPushButton#screenshot_button:pressed,
+QToolBar#main_toolbar QPushButton#recorder_button:pressed,
+QToolBar#main_toolbar QPushButton#fullscreen_button:pressed,
+QToolBar#main_toolbar QPushButton#theme_button:pressed,
+QToolBar#main_toolbar QPushButton#toolbar_logout_button:pressed {
+    background-color: #404a60;
+}
+
 /* Sidebar styling */
 #sidebar {
     background-color: #253046; /* Slightly lighter navy background */
@@ -606,7 +613,6 @@ QToolBar#main_toolbar QPushButton#toolbar_logout_button:pressed {
 #content_container {
     background-color: #1a2035; /* Dark navy background */
 }
-
 
 /* Connection Buttons */
 #connect_button {

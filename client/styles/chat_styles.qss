@@ -2,39 +2,70 @@
 
 /* Chat display */
 QTextEdit#chatDisplay {
-    background-color: #f5f5f5;
-    border: 1px solid #cccccc;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
+    background: #0f1724;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'Segoe UI', Arial, sans-serif;
     font-size: 14px;
-    padding: 5px;
+    color: #ffffff;
+}
+
+QTextEdit#chatDisplay QScrollBar:vertical {
+    background: #182533;
+    width: 8px;
+    border-radius: 4px;
+    margin: 0px;
+}
+
+QTextEdit#chatDisplay QScrollBar::handle:vertical {
+    background: #2b5278;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QTextEdit#chatDisplay QScrollBar::handle:vertical:hover {
+    background: #3a6ea5;
+}
+
+QTextEdit#chatDisplay QScrollBar::add-line:vertical,
+QTextEdit#chatDisplay QScrollBar::sub-line:vertical {
+    height: 0px;
 }
 
 /* Chat input field */
 QLineEdit#chatInput {
-    border: 1px solid #cccccc;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
+    background: #182533;
+    border: none;
+    border-radius: 18px;
+    padding: 8px 16px;
     font-size: 14px;
-    padding: 8px;
+    color: #ffffff;
+    margin: 8px 0;
+}
+
+QLineEdit#chatInput:focus {
+    background: #1f3347;
 }
 
 /* Send button */
 QPushButton#sendButton {
-    background-color: #007bff;
+    background: #2b5278;
     color: white;
     border: none;
-    border-radius: 5px;
-    padding: 8px 12px;
-    font-weight: bold;
+    border-radius: 18px;
+    padding: 8px 20px;
+    font-weight: 500;
+    min-width: 80px;
+    margin: 8px 4px;
 }
 
 QPushButton#sendButton:hover {
-    background-color: #0069d9;
+    background: #3a6ea5;
 }
 
 QPushButton#sendButton:pressed {
-    background-color: #0062cc;
+    background: #1f3347;
 }
 
 /* Chat container */
@@ -75,4 +106,44 @@ QLabel#chatTitle[darkTheme="true"] {
     color: #ffffff;
 }
 
-/* Message bubble styles are handled in HTML directly in the code */ 
+/* Message bubble styles are handled in HTML directly in the code */
+
+/* Light Theme Overrides */
+[theme="light"] QTextEdit#chatDisplay {
+    background: #f7f9fc;
+    color: #202124;
+}
+
+[theme="light"] QTextEdit#chatDisplay QScrollBar:vertical {
+    background: #ffffff;
+}
+
+[theme="light"] QTextEdit#chatDisplay QScrollBar::handle:vertical {
+    background: #bec4c9;
+}
+
+[theme="light"] QTextEdit#chatDisplay QScrollBar::handle:vertical:hover {
+    background: #a5aaaf;
+}
+
+[theme="light"] QLineEdit#chatInput {
+    background: #ffffff;
+    border: 1px solid #e4e4e4;
+    color: #202124;
+}
+
+[theme="light"] QLineEdit#chatInput:focus {
+    border-color: #1a75ff;
+}
+
+[theme="light"] QPushButton#sendButton {
+    background: #1a75ff;
+}
+
+[theme="light"] QPushButton#sendButton:hover {
+    background: #0056d6;
+}
+
+[theme="light"] QPushButton#sendButton:pressed {
+    background: #004bbf;
+} 

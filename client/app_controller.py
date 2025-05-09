@@ -6,8 +6,14 @@ from client.controller_client import ControllerClient
 from urllib.parse import urlparse
 import socket
 import datetime
+from PyQt5.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger("AppController")
+
+class ChatSignals(QObject):
+    """Signals for thread-safe chat message delivery"""
+    message_received = pyqtSignal(str, str, str)  # sender, text, timestamp
+    error_occurred = pyqtSignal(str)  # error message
 
 class AppController:
     """
@@ -18,8 +24,9 @@ class AppController:
         self.wm = window_manager
         self.db = Database("relay.db")
         self.client = None
+        self.chat_signals = ChatSignals()
 
-        # وصل کردن سیگنال‌های UI
+        # Connect UI signals
         self.wm.login_requested.connect(self.handle_login)
         self.wm.registration_requested.connect(self.handle_registration)
         self.wm.logout_requested.connect(self.handle_logout)
@@ -133,7 +140,7 @@ class AppController:
             )
             return
 
-        # 2) If auth is successful, update DB and show main window
+        # If auth is successful, update DB and show main window
         self.client = client
         ok, user_id = self.db.verify_user(username, password)
         if not ok:
@@ -145,30 +152,48 @@ class AppController:
             return
         self.db.log("INFO", "AUTH_SUCCESS", {"username": username, "user_id": user_id})
         logger.info("Login successful (id=%d)", user_id)
-        self.wm.show_main_window(username)
+        self.wm.show_main_window(username, user_id)
         win = self.wm.controller_window
 
-        # 1) Send message from UI to server (with sender and timestamp)
-        win.chat_send_button.clicked.connect(lambda: self._send_and_clear(win, username))
-        win.chat_input.returnPressed.connect(lambda: self._send_and_clear(win, username))
+        # Connect chat signals
+        win.chat_message_signal.connect(self._send_chat)
+        self.client.on_chat(self._handle_incoming_chat)
+        
+        # Connect thread-safe signals
+        self.chat_signals.message_received.connect(win.append_chat_message)
+        self.chat_signals.error_occurred.connect(self.wm.show_chat_error)
 
-        # 2) Receive message from server and update UI (with sender, text, timestamp)
-        # Use the chat_message_signal for thread-safe UI updates
-        self.client.on_chat(lambda sender, text, timestamp: win.chat_message_signal.emit(sender, text, timestamp))
-
-    def _send_and_clear(self, win, username):
-        text = win.chat_input.text().strip()
-        if not text:
+    def _send_chat(self, sender: str, text: str, timestamp: str):
+        """Handle outgoing chat messages"""
+        if not self.client:
             return
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         try:
-            self.client.send_chat(text, sender=username, timestamp=timestamp)
-            win.chat_input.clear()
+            # First display the message locally
+            self.chat_signals.message_received.emit(sender, text, timestamp)
+            # Then send to server
+            self.client.send_chat(text, sender=sender, timestamp=timestamp)
         except Exception as e:
             logger.exception("Failed to send chat message")
-            self.wm.show_chat_error(f"Failed to send message: {e}")
+            self.chat_signals.error_occurred.emit(f"Failed to send message: {e}")
+
+    def _handle_incoming_chat(self, sender: str, text: str, timestamp: str):
+        """Handle incoming chat messages"""
+        if not self.wm.controller_window:
+            return
+        try:
+            # Only display if it's not from us (to avoid duplicates)
+            if sender != self.wm.controller_window.username:
+                self.chat_signals.message_received.emit(sender, text, timestamp)
+        except Exception as e:
+            logger.exception("Failed to handle incoming chat message")
+            self.chat_signals.error_occurred.emit(f"Failed to display message: {e}")
 
     def handle_logout(self):
         logger.info("Logout requested")
-        # TODO: cleanup self.client, close session
+        if self.client:
+            try:
+                self.client.disconnect()
+            except Exception as e:
+                logger.exception("Error during client disconnect")
+        self.client = None
         self.wm.show_login_window()

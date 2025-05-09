@@ -42,6 +42,8 @@ class RelayHandler(StreamRequestHandler):
         self.server.clients.append(self.request)
         self._username = None
         self._client_addr = self.client_address
+        self._session_id = None
+        self._lock = threading.RLock()
 
     def finish(self):
         try:
@@ -81,16 +83,33 @@ class RelayHandler(StreamRequestHandler):
 
             # CHAT broadcast
             elif pkt is PacketType.CHAT:
-                sender = data.get("sender", "Unknown")
                 text = data.get("text", "")
-                timestamp = data.get("timestamp") or datetime.datetime.now().isoformat(timespec='seconds')
-                logger.info(f"[CHAT] {timestamp} {sender}: {text}")
-                # Broadcast to all connected clients
-                for client_sock in list(getattr(self.server, "clients", [])):
+                ts = data.get("timestamp", datetime.datetime.now().strftime("%H:%M:%S"))
+                sender = self._username
+                
+                # Log the message
+                logger.info(f"[CHAT] {ts} {sender}: {text}")
+                
+                # Store in database if we have a session
+                if self._session_id:
                     try:
-                        send_json(client_sock, PacketType.CHAT, {"sender": sender, "text": text, "timestamp": timestamp})
+                        db.add_chat_msg(self._session_id, self._username, text)
                     except Exception as e:
-                        logger.warning(f"Failed to send chat to a client: {e}")
+                        logger.error(f"Failed to store chat message: {e}")
+                
+                # Broadcast to all clients in the same session
+                with self._lock:
+                    for client_sock in list(getattr(self.server, "clients", [])):
+                        if client_sock != self.request:  # Don't send back to sender
+                            try:
+                                send_json(client_sock, PacketType.CHAT,
+                                        {"text": text, "timestamp": ts, "sender": sender})
+                            except Exception as e:
+                                logger.warning(f"Failed to send chat to a client: {e}")
+                                try:
+                                    self.server.clients.remove(client_sock)
+                                except ValueError:
+                                    pass
 
             else:
                 # TODO: handle other PacketTypes

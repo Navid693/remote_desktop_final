@@ -2,7 +2,7 @@
 
 import logging
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMessageBox, QToolBar
 from client.ui_login import LoginWindow
 from client.ui_register import RegistrationWindow
 from client.ui_controller import ControllerWindow
@@ -27,63 +27,143 @@ class WindowManager(QObject):
         self.login_window.register_signal.connect(self.show_registration_window)
         self.register_window.register_attempt_signal.connect(self.registration_requested.emit)
 
-        self.login_window.toggle_theme_signal.connect(lambda: self.toggle_theme())
-        self.register_window.toggle_theme_signal.connect(lambda: self.toggle_theme())
+        self.login_window.toggle_theme_signal.connect(self.toggle_theme)
+        self.register_window.toggle_theme_signal.connect(self.toggle_theme)
+
+        # Apply initial theme
+        app = QApplication.instance()
+        current_theme = self.theme_manager.get_current_theme()
+        self.theme_manager.apply_theme(app, current_theme)
+        self._update_all_windows_theme(current_theme)
+
+    def _update_all_windows_theme(self, theme):
+        """Update theme for all windows consistently"""
+        # Update theme icons
+        for win in (self.login_window, self.register_window, self.controller_window):
+            if win and hasattr(win, "_update_theme_icon"):
+                win._update_theme_icon(theme)
+
+        # Update toolbar styling if controller window exists
+        if self.controller_window:
+            if theme == "light":
+                self.controller_window.findChildren(QToolBar)[0].setStyleSheet("""
+                    QToolBar {
+                        background: #ffffff;
+                        border-bottom: 1px solid #dfe4ea;
+                        spacing: 8px;
+                        padding: 8px;
+                    }
+                    QPushButton {
+                        background: #74b9ff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        padding: 6px 12px;
+                        margin: 0px 2px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background: #0984e3;
+                    }
+                    QPushButton:pressed {
+                        background: #0078d7;
+                    }
+                    QLineEdit {
+                        background: #ffffff;
+                        color: #2f3542;
+                        border: 1px solid #dfe4ea;
+                        border-radius: 4px;
+                        padding: 6px 10px;
+                    }
+                    QLineEdit:focus {
+                        border: 1px solid #74b9ff;
+                    }
+                """)
+            else:  # Dark theme
+                self.controller_window.findChildren(QToolBar)[0].setStyleSheet("""
+                    QToolBar {
+                        background: #1e263c;
+                        border-bottom: 1px solid #141a2e;
+                        spacing: 8px;
+                        padding: 8px;
+                    }
+                    QPushButton {
+                        background: #3a6fbf;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        padding: 6px 12px;
+                        margin: 0px 2px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background: #4a7fd0;
+                    }
+                    QPushButton:pressed {
+                        background: #2a5fa9;
+                    }
+                    QLineEdit {
+                        background: #283550;
+                        color: #f5f6fa;
+                        border: 1px solid #455b82;
+                        border-radius: 4px;
+                        padding: 6px 10px;
+                    }
+                    QLineEdit:focus {
+                        border: 1px solid #3a6fbf;
+                    }
+                """)
+
+        # Update checkbox style
+        if theme == "light":
+            self.login_window.remember_chk.setStyleSheet("""
+                QCheckBox::indicator {
+                    width: 20px;
+                    height: 20px;
+                    border: 1px solid #74b9ff;
+                    border-radius: 3px;
+                    background: #ffffff;
+                }
+                QCheckBox::indicator:checked {
+                    background-image: url(assets/icons/checkmark.svg);
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    border-color: #74b9ff;
+                }
+            """)
+        else:  # Dark theme
+            self.login_window.remember_chk.setStyleSheet("""
+                QCheckBox::indicator {
+                    width: 20px;
+                    height: 20px;
+                    border: 1px solid #3d4852;
+                    border-radius: 3px;
+                    background: #2d3436;
+                }
+                QCheckBox::indicator:checked {
+                    background-image: url(assets/icons/checkmark.svg);
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    border-color: #0984e3;
+                }
+            """)
 
     def toggle_theme(self):
+        """Toggle between light and dark themes"""
         current = self.theme_manager.get_current_theme()
         next_theme = "light" if current == "dark" else "dark"
 
         # Apply theme to the whole application
         app = QApplication.instance()
         self.theme_manager.apply_theme(app, next_theme)
-
-        # Update theme icon in all open windows
-        for win in (self.login_window, self.register_window, self.controller_window):
-            if win and hasattr(win, "_update_theme_icon"):
-                win._update_theme_icon(next_theme)
-
-        # Update checkbox style for better visibility in light theme
-        if next_theme == "light":
-            self.login_window.remember_chk.setStyleSheet("""
-                QCheckBox::indicator {
-                    width: 20px;
-                    height: 20px;
-                    border: 1.5px solid #0078d7;
-                    border-radius: 5px;
-                    background: #f8fafc;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-                    transition: background 0.2s, border 0.2s;
-                }
-                QCheckBox::indicator:hover {
-                    border: 1.5px solid #005bb5;
-                    background: #eaf4fd;
-                }
-                QCheckBox::indicator:checked {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e0f3ff, stop:1 #b3e0ff);
-                    background-image: url(assets/icons/checkmark.svg);
-                    background-position: center;
-                    background-repeat: no-repeat;
-                    border: 1.5px solid #0078d7;
-                    box-shadow: 0 2px 6px rgba(0,120,215,0.10);
-                }
-            """)
-        else:
-            self.login_window.remember_chk.setStyleSheet("""
-                QCheckBox::indicator {
-                    width: 20px;
-                    height: 20px;
-                    border: 1px solid #999;
-                    border-radius: 3px;
-                }
-                QCheckBox::indicator:checked {
-                    background-image: url(assets/icons/checkmark.svg);
-                    background-position: center;
-                    background-repeat: no-repeat;
-                    border: 1px solid #0078d7;
-                }
-            """)
-
+        
+        # Update all windows with new theme
+        self._update_all_windows_theme(next_theme)
+        
+        # Ensure controller window theme icon is updated
+        if self.controller_window:
+            self.controller_window._update_theme_icon(next_theme)
+        
         self._logger.info("Theme switched to %s", next_theme)
 
     def show_login_window(self):
@@ -98,15 +178,18 @@ class WindowManager(QObject):
         self._logger.info("Closing registration window after successful registration")
         self.register_window.close()
 
-    def show_main_window(self, username):
-        self._logger.info(f"[{self._timestamp()}] Launching main window for user {username}")
-        self.login_window.close()
-        self.controller_window = ControllerWindow(username=username)
+    def show_main_window(self, username: str, user_id: int = None):
+        """Show the main controller window."""
+        self.controller_window = ControllerWindow(username, role="controller", user_id=user_id)
         self.controller_window.logout_signal.connect(self._handle_logout)
         self.controller_window.toggle_theme_signal.connect(self.toggle_theme)
+        self.controller_window.switch_role_signal.connect(self.handle_role_switch)
+        self.controller_window.connect_requested.connect(self.handle_connect_request)
+        self.controller_window.chat_message_signal.connect(self._on_chat_message)
         self.controller_window.show()
-
-        # TODO: if role == target → show TargetWindow instead (when implemented)
+        if self.login_window:
+            self.login_window.close()
+        self._logger.info("[%s] Launching main window for user %s with ID %s", self._timestamp(), username, user_id)
 
     def _handle_logout(self):
         self._logger.info(f"[{self._timestamp()}] Logout requested; closing controller window and showing login window")
@@ -153,3 +236,20 @@ class WindowManager(QObject):
     def show_permission_error(self, message: str = "Failed to send permission request."):
         if self.controller_window:
             self.controller_window.show_error(message)
+
+    def handle_role_switch(self, new_role: str):
+        """Handle role switching between controller and target."""
+        self._logger.info(f"[{self._timestamp()}] Switching role to {new_role}")
+        if self.controller_window:
+            self.controller_window.role = new_role
+            self.controller_window._update_role_ui()
+
+    def handle_connect_request(self, target_uid: str):
+        """Handle connection request to a target."""
+        self._logger.info(f"[{self._timestamp()}] Connection requested to target {target_uid}")
+        # TODO: Implement connection logic
+        self.show_message(f"Connection request to target {target_uid} sent", "Connection Request")
+
+    def _on_chat_message(self, message: str):
+        # Implement the logic to handle incoming chat messages
+        pass
