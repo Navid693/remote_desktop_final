@@ -28,14 +28,20 @@ log = logging.getLogger(__name__)
 class RegistrationWindow(QWidget):
     register_attempt_signal = pyqtSignal(str, str, str)
     toggle_theme_signal = pyqtSignal()
+    back_to_login_signal = pyqtSignal()  # New signal for returning to login
 
     def __init__(self) -> None:
         super().__init__()
         self._build_ui()
 
+    def closeEvent(self, event):
+        """Handle window close event by showing login window."""
+        self.back_to_login_signal.emit()
+        event.accept()
+
     # --------------------------------------------------
     def _build_ui(self) -> None:
-        self.setWindowTitle("SCU Remote Desktop — Sign Up")
+        self.setWindowTitle("SCU Remote Desktop — Sign Up")
         self.setMinimumWidth(420)
 
         # Theme toggle
@@ -44,6 +50,18 @@ class RegistrationWindow(QWidget):
         self.theme_btn = QPushButton("🌙")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setFlat(True)
+        self.theme_btn.setStyleSheet("""
+            QPushButton { 
+                font-size: 24px; 
+                padding: 5px;
+                border: none;
+                background: transparent;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+            }
+        """)
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
         top.addWidget(self.theme_btn)
         self._update_theme_icon("dark")  # Set default icon
@@ -51,25 +69,25 @@ class RegistrationWindow(QWidget):
         # Main body
         body = QVBoxLayout()
         body.setContentsMargins(30, 0, 30, 30)
-        body.setSpacing(15)
+        body.setSpacing(8)  # Reduce spacing between elements
 
         logo = QLabel()
         logo.setAlignment(Qt.AlignCenter)
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
             logo.setPixmap(
-                pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pm.scaled(160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # Larger logo
             )
         body.addWidget(logo)
 
         title = QLabel("Create Account")
         title.setAlignment(Qt.AlignCenter)
         font = title.font()
-        font.setPointSize(14)
+        font.setPointSize(16)  # Larger title text
         font.setBold(True)
         title.setFont(font)
         body.addWidget(title)
-        body.addSpacing(15)
+        body.addSpacing(10)  # Reduced spacing
 
         body.addWidget(QLabel("Username:"))
         self.user_in = QLineEdit()
@@ -86,7 +104,12 @@ class RegistrationWindow(QWidget):
         body.addWidget(self.cpwd_in)
         body.addSpacing(10)
 
+        # Buttons container
+        buttons_layout = QVBoxLayout()
+        buttons_layout.setSpacing(8)  # Reduced spacing between buttons
+
         self.reg_btn = QPushButton("Create account")
+        self.reg_btn.setMinimumHeight(40)  # Taller buttons
         self.reg_btn.setStyleSheet(
             """
             QPushButton {
@@ -96,6 +119,7 @@ class RegistrationWindow(QWidget):
                 border: none;
                 padding: 8px;
                 border-radius: 4px;
+                font-size: 14px;  /* Larger font */
             }
             QPushButton:hover {
                 background: #27ae60;
@@ -107,7 +131,34 @@ class RegistrationWindow(QWidget):
         )
         self.reg_btn.setDefault(True)
         self.reg_btn.clicked.connect(self._on_register)
-        body.addWidget(self.reg_btn)
+        buttons_layout.addWidget(self.reg_btn)
+
+        # Back to Login button
+        self.back_btn = QPushButton("Back to Login")
+        self.back_btn.setMinimumHeight(40)  # Taller buttons
+        self.back_btn.setStyleSheet(
+            """
+            QPushButton {
+                background: #3498db;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-size: 14px;  /* Larger font */
+            }
+            QPushButton:hover {
+                background: #2980b9;
+            }
+            QPushButton:pressed {
+                background: #2472a4;
+            }
+        """
+        )
+        self.back_btn.clicked.connect(self.back_to_login_signal.emit)
+        buttons_layout.addWidget(self.back_btn)
+
+        body.addLayout(buttons_layout)
 
         self.err_lbl = QLabel("")
         self.err_lbl.setAlignment(Qt.AlignCenter)

@@ -18,6 +18,7 @@ from PyQt5.QtGui import (  # Added event types and drawing tools
     QMouseEvent,
     QPixmap,
     QWheelEvent,
+    QIcon,  # Added for icons
 )
 from PyQt5.QtWidgets import (
     QApplication,
@@ -117,27 +118,81 @@ class ControllerWindow(QMainWindow):
         self.peer_username: str | None = None
         self.session_id: int | None = None
         self.active_permissions: dict = {}  # For controller to know what it can do
+        self.is_recording = False  # Track recording state
 
         self._session_start_time = time.time()
         self._frame_timer = QTimer(self)  # For target frame generation
         self._build_ui()
+        self._connect_signals()
         log.info(f"MainWindow loaded for {username} (UID: {user_id}, Role: {role})")
         self._update_theme_icon(
             QApplication.instance().property("current_theme") or "dark"
         )
-        self._update_theme_icon(
-            QApplication.instance().property("current_theme") or "dark"
-        )
+
+    def _connect_signals(self):
+        """Connect all signal handlers."""
+        # Connect screen recording button
+        self.screen_record_btn.clicked.connect(self._toggle_screen_recording)
+        
+        # Connect screenshot button
+        self.screenshot_btn.clicked.connect(self._take_screenshot)
+        
+        # Connect log button
+        self.log_btn.clicked.connect(self._show_logs)
+        
+        # Connect menu button
+        self.menu_btn.clicked.connect(self._show_menu)
+
+    def _toggle_screen_recording(self):
+        """Toggle screen recording state."""
+        self.is_recording = not self.is_recording
+        if self.is_recording:
+            self.screen_record_btn.setIcon(QIcon("assets/icons/screen-recorder (1).png"))
+            self.screen_record_btn.setToolTip("Stop Recording")
+            # TODO: Implement actual recording start
+            log.info("Screen recording started")
+        else:
+            self.screen_record_btn.setIcon(QIcon("assets/icons/screen recorder.png"))
+            self.screen_record_btn.setToolTip("Start Recording")
+            # TODO: Implement actual recording stop
+            log.info("Screen recording stopped")
+
+    def _take_screenshot(self):
+        """Take a screenshot of the remote screen."""
+        # TODO: Implement actual screenshot functionality
+        log.info("Screenshot taken")
+        self.show_message("Screenshot saved", "Screenshot")
+
+    def _show_logs(self):
+        """Show the log viewer dialog."""
+        # TODO: Implement log viewer
+        log.info("Opening log viewer")
+        self.show_message("Log viewer not implemented yet", "Logs")
+
+    def _show_menu(self):
+        """Show the menu dialog."""
+        # TODO: Implement menu
+        log.info("Opening menu")
+        self.show_message("Menu not implemented yet", "Menu")
 
     def _build_ui(self) -> None:
         self.setWindowTitle(f"SCU Remote Desktop — {self.username}")
-        self.resize(1100, 750)
+        self.resize(1200, 800)  # Larger initial size
 
         # === Toolbar ===
         self.toolbar = self.addToolBar("MainToolbar")
         self.toolbar.setObjectName("main_toolbar")
         self.toolbar.setMovable(False)
-        self.toolbar.setIconSize(QSize(20, 20))  # For emoji buttons
+        self.toolbar.setIconSize(QSize(24, 24))  # Slightly larger icons
+        self.toolbar.setStyleSheet("""
+            QToolBar {
+                spacing: 10px;
+                padding: 5px;
+            }
+            QToolButton {
+                padding: 5px;
+            }
+        """)
 
         # Left side of Toolbar (User & Session Info)
         self.role_label = QLabel(f"Role: {self.role.title()}")
@@ -146,39 +201,84 @@ class ControllerWindow(QMainWindow):
         self.toolbar.addWidget(self.uid_label)
 
         self.toolbar.addSeparator()
+        
+        # Connection status with icon
+        status_widget = QWidget()
+        status_layout = QHBoxLayout(status_widget)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(4)
+        
+        self.connection_icon = QLabel()
+        self.connection_icon.setPixmap(QPixmap("assets/icons/broken-link.png").scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        status_layout.addWidget(self.connection_icon)
+        
         self.peer_status_label = QLabel("Status: Not Connected")
-        self.toolbar.addWidget(self.peer_status_label)
+        status_layout.addWidget(self.peer_status_label)
+        self.toolbar.addWidget(status_widget)
+        
         self.session_id_label = QLabel("")
         self.toolbar.addWidget(self.session_id_label)
 
-        # Controller specific toolbar items - these are added now and visibility is controlled by _update_role_ui
-        # Controller specific toolbar items (conditionally added/shown)
+        # Controller specific toolbar items
         self.target_uid_input = QLineEdit()
         self.target_uid_input.setPlaceholderText("Enter Target Username")
         self.target_uid_input.setFixedWidth(150)
-        self.toolbar.addWidget(self.target_uid_input)  # Add to toolbar
+        self.toolbar.addWidget(self.target_uid_input)
 
-        self.connect_button = QPushButton("Connect")
+        self.connect_button = QPushButton()
+        self.connect_button.setIcon(QIcon("assets/icons/link.png"))
+        self.connect_button.setToolTip("Connect to Target")
         self.connect_button.clicked.connect(self._on_connect_request)
-        self.toolbar.addWidget(self.connect_button)  # Add to toolbar
+        self.toolbar.addWidget(self.connect_button)
 
         # Spacer to push items to the right
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.toolbar.addWidget(spacer)
 
-        # Right side of Toolbar
+        # Right side of Toolbar - Action Buttons
+        # Screen Recording Button
+        self.screen_record_btn = QPushButton()
+        self.screen_record_btn.setIcon(QIcon("assets/icons/screen recorder.png"))
+        self.screen_record_btn.setToolTip("Start/Stop Screen Recording")
+        self.screen_record_btn.setObjectName("recorder_button")
+        self.toolbar.addWidget(self.screen_record_btn)
+
+        # Screenshot Button
+        self.screenshot_btn = QPushButton()
+        self.screenshot_btn.setIcon(QIcon("assets/icons/screenshot.png"))
+        self.screenshot_btn.setToolTip("Take Screenshot")
+        self.screenshot_btn.setObjectName("screenshot_button")
+        self.toolbar.addWidget(self.screenshot_btn)
+
+        # Log Button
+        self.log_btn = QPushButton()
+        self.log_btn.setIcon(QIcon("assets/icons/log-file (1).png"))
+        self.log_btn.setToolTip("View Logs")
+        self.log_btn.setObjectName("log_button")
+        self.toolbar.addWidget(self.log_btn)
+
+        # Menu Button
+        self.menu_btn = QPushButton()
+        self.menu_btn.setIcon(QIcon("assets/icons/menu-burger.png"))
+        self.menu_btn.setToolTip("Menu")
+        self.menu_btn.setObjectName("menu_button")
+        self.toolbar.addWidget(self.menu_btn)
+
         self.switch_role_button = QPushButton("Switch Role")
         self.switch_role_button.clicked.connect(self._on_switch_role)
         self.toolbar.addWidget(self.switch_role_button)
 
-        self.theme_btn = QPushButton("🌙")  # Placeholder, updated by _update_theme_icon
+        self.theme_btn = QPushButton()
         self.theme_btn.setObjectName("theme_button")
         self.theme_btn.setToolTip("Toggle Theme")
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
         self.toolbar.addWidget(self.theme_btn)
 
-        self.logout_btn = QPushButton("Logout")
+        self.logout_btn = QPushButton()
+        self.logout_btn.setIcon(QIcon("assets/icons/logout.png"))
+        self.logout_btn.setToolTip("Logout")
+        self.logout_btn.setObjectName("toolbar_logout_button")
         self.logout_btn.clicked.connect(self.logout_signal.emit)
         self.toolbar.addWidget(self.logout_btn)
 
@@ -392,25 +492,23 @@ class ControllerWindow(QMainWindow):
         self.chat_send_button.setEnabled(connected)
 
     def _on_connect_request(self):
-        if self.role == "controller":
-            if (
-                self.session_id and self.peer_username
-            ):  # Currently connected, so disconnect
-                # This should ideally be a specific "disconnect_peer_requested" signal
-                # For now, we can assume AppController handles client.disconnect() which also clears session
-                self.logout_signal.emit()  # Crude way to disconnect for now, should be refined
-                log.info(
-                    "Controller requested disconnect from peer via connect_button."
-                )
-            else:  # Not connected, so connect
-                target_uid = self.target_uid_input.text().strip()
-                log.info(
-                    f"ControllerWindow._on_connect_request: Read Target UID from input: '{target_uid}'"
-                )  # DEBUG
-                if target_uid:
-                    self.connect_requested.emit(target_uid)
-                else:
-                    self.show_message("Target UID cannot be empty.", "Input Error")
+        """Handle connect/disconnect button click."""
+        if self.peer_username:  # Already connected, so disconnect
+            self.connect_button.setEnabled(False)  # Disable until disconnect completes
+            self.peer_username = None
+            self.session_id = None
+            # Just disconnect from peer, don't logout
+            self.connect_requested.emit("")  # Empty string signals disconnect
+            self.connect_button.setText("Connect")
+            self.connect_button.setEnabled(True)
+            log.info("Controller requested disconnect from peer via connect_button.")
+        else:  # Not connected, so connect
+            target_identifier = self.target_uid_input.text().strip()
+            if not target_identifier:
+                self.show_message("Target UID/Username cannot be empty.", "Input Error")
+                return
+            log.info(f"ControllerWindow._on_connect_request: Read Target identifier from input: '{target_identifier}'")
+            self.connect_requested.emit(target_identifier)
 
     def _on_send_chat(self):
         message_text = self.chat_input_lineedit.text().strip()
@@ -460,16 +558,12 @@ class ControllerWindow(QMainWindow):
         except ValueError:
             display_ts = timestamp_str  # Fallback to original if parsing fails
 
-        # Determine if the message is from the current user
-        # `is_self` parameter passed to ChatAreaWidget.append_message handles alignment.
-        # The check `sender == self.username` is only needed if the server echoes messages back.
-        # If the server broadcasts, then `is_self` for locally sent messages is true.
-        # For messages received from network, `is_self` will be `sender == self.username`.
-        # Here, `is_self` is passed explicitly when we add our own outgoing message.
-        # For incoming, if server provides correct sender, this works:
-        final_is_self = sender == self.username
+        # If this is a message from the server (not marked as is_self) but the sender is us,
+        # we should skip it since we've already displayed it locally
+        if not is_self and sender == self.username:
+            return  # Skip displaying since we already showed it when sent
 
-        self.chat_area.append_message(sender, text, display_ts, final_is_self)
+        self.chat_area.append_message(sender, text, display_ts, sender == self.username)
 
     def _update_session_timer(self):
         if self.session_id:  # Only run timer if in an active session
@@ -484,15 +578,12 @@ class ControllerWindow(QMainWindow):
             self._session_start_time = time.time()  # Reset for next session
 
     def _update_theme_icon(self, theme_name: str):
+        """Update the theme toggle button icon based on current theme."""
         if hasattr(self, "theme_btn"):
-            icon_text = "☀️" if theme_name == "light" else "🌙"
-            tooltip_text = (
-                "Switch to Dark Mode"
-                if theme_name == "light"
-                else "Switch to Light Mode"
-            )
-            self.theme_btn.setText(icon_text)
-            self.theme_btn.setToolTip(tooltip_text)
+            if theme_name == "light":
+                self.theme_btn.setText("🌙")  # Moon emoji for dark mode
+            else:
+                self.theme_btn.setText("☀️")  # Sun emoji for light mode
 
     def show_error(self, message: str, title: str = "Error"):
         QMessageBox.critical(self, title, message)
@@ -506,33 +597,30 @@ class ControllerWindow(QMainWindow):
         peer_username: str | None = None,
         session_id: int | None = None,
     ):
-        self.peer_username = peer_username if connected else None
-        self.session_id = session_id if connected else None
+        """Update the UI to reflect current connection status."""
+        self.peer_username = peer_username
+        self.session_id = session_id
 
+        # Update connection icon
         if connected:
-            self.peer_status_label.setText(f"Connected to: {self.peer_username}")
-            self.session_id_label.setText(f"(Session: {self.session_id})")
-            if self.role == "target":
-                self.target_info_label.setText(
-                    f"Connected with Controller: {self.peer_username}"
-                )
-                self.screen_label.setText(
-                    f"Sharing your screen with {self.peer_username}"
-                )
-            self._session_start_time = time.time()  # Reset timer on new connection
-            if self.role == "target" and not self._frame_timer.isActive():
-                self._frame_timer.start(100)  # e.g., 10 FPS
+            self.connect_button.setIcon(QIcon("assets/icons/link.png"))
+            self.connect_button.setText("Disconnect")
+        else:
+            self.connect_button.setIcon(QIcon("assets/icons/broken-link.png"))
+            self.connect_button.setText("Connect")
+
+        # Update status text
+        if connected and peer_username:
+            self.peer_status_label.setText(f"Connected to: {peer_username}")
+            if session_id:
+                self.session_id_label.setText(f"Session ID: {session_id}")
+            else:
+                self.session_id_label.setText("")
         else:
             self.peer_status_label.setText("Status: Not Connected")
             self.session_id_label.setText("")
-            if self._frame_timer.isActive():  # Stop timer if disconnected
-                self._frame_timer.stop()
-            if self.role == "target":
-                self.target_info_label.setText("Waiting for a controller to connect...")
-                self.screen_label.setText("Your screen is not currently shared.")
-            elif self.role == "controller":
-                self.screen_label.setText("Remote screen will appear here")
 
+        # Update UI elements based on connection state
         self._update_ui_for_connection_state()
         self._update_session_timer()  # Update timer display immediately
 

@@ -53,40 +53,50 @@ class LoginWindow(QWidget):
         self.setWindowTitle("SCU Remote Desktop — Login")
         self.setMinimumWidth(420)
 
-        # ---------- Theme toggle (top‑right) ----------
+        # Theme toggle
         top = QHBoxLayout()
         top.addStretch()
         self.theme_btn = QPushButton("🌙")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setFlat(True)
+        self.theme_btn.setStyleSheet("""
+            QPushButton { 
+                font-size: 24px; 
+                padding: 5px;
+                border: none;
+                background: transparent;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+            }
+        """)
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
         top.addWidget(self.theme_btn)
         self._update_theme_icon("dark")  # Set default icon
 
-        # ---------- Main form ----------
+        # Main body
         body = QVBoxLayout()
         body.setContentsMargins(30, 0, 30, 30)
-        body.setSpacing(15)
+        body.setSpacing(8)  # Reduce spacing between elements
 
-        # Logo
-        logo_lbl = QLabel()
-        logo_lbl.setAlignment(Qt.AlignCenter)
+        logo = QLabel()
+        logo.setAlignment(Qt.AlignCenter)
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
-            logo_lbl.setPixmap(
-                pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo.setPixmap(
+                pm.scaled(160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # Larger logo
             )
-        body.addWidget(logo_lbl)
+        body.addWidget(logo)
 
-        # Title
-        title_lbl = QLabel("SCU Remote Desktop")
-        title_lbl.setAlignment(Qt.AlignCenter)
-        title_font = title_lbl.font()
-        title_font.setPointSize(14)
-        title_font.setBold(True)
-        title_lbl.setFont(title_font)
-        body.addWidget(title_lbl)
-        body.addSpacing(15)
+        title = QLabel("Login")
+        title.setAlignment(Qt.AlignCenter)
+        font = title.font()
+        font.setPointSize(16)  # Larger title text
+        font.setBold(True)
+        title.setFont(font)
+        body.addWidget(title)
+        body.addSpacing(10)  # Reduced spacing
 
         # Relay address (IP + port)
         body.addWidget(QLabel("Relay server:"))
@@ -137,32 +147,10 @@ class LoginWindow(QWidget):
         body.addWidget(self.remember_chk)
         body.addSpacing(10)
 
-        # Buttons
+        # Login button
         self.login_btn = QPushButton("Login")
-        self.login_btn.setDefault(True)
+        self.login_btn.setMinimumHeight(40)  # Taller button
         self.login_btn.setStyleSheet(
-            """
-            QPushButton {
-                background: #3498db;
-                color: white;
-                font-weight: bold;
-                border: none;
-                padding: 8px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: #2980b9;
-            }
-            QPushButton:pressed {
-                background: #2472a4;
-            }
-        """
-        )
-        self.login_btn.clicked.connect(self._on_login)
-        body.addWidget(self.login_btn)
-
-        self.reg_btn = QPushButton("Sign Up")
-        self.reg_btn.setStyleSheet(
             """
             QPushButton {
                 background: #2ecc71;
@@ -171,12 +159,39 @@ class LoginWindow(QWidget):
                 border: none;
                 padding: 8px;
                 border-radius: 4px;
+                font-size: 14px;  /* Larger font */
             }
             QPushButton:hover {
                 background: #27ae60;
             }
             QPushButton:pressed {
                 background: #219a52;
+            }
+        """
+        )
+        self.login_btn.setDefault(True)
+        self.login_btn.clicked.connect(self._on_login)
+        body.addWidget(self.login_btn)
+
+        # Register button
+        self.reg_btn = QPushButton("Create Account")
+        self.reg_btn.setMinimumHeight(40)  # Taller button
+        self.reg_btn.setStyleSheet(
+            """
+            QPushButton {
+                background: #3498db;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-size: 14px;  /* Larger font */
+            }
+            QPushButton:hover {
+                background: #2980b9;
+            }
+            QPushButton:pressed {
+                background: #2472a4;
             }
         """
         )

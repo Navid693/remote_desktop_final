@@ -209,14 +209,12 @@ class RelayHandler(StreamRequestHandler):
             )
             return
 
-        target_uid_str = data.get(
-            "target_uid"
-        )  # Assuming target_uid is username for now
-        if not target_uid_str:
+        target_identifier = data.get("target_identifier")
+        if not target_identifier:
             send_json(
                 self.request,
                 PacketType.ERROR,
-                {"code": 400, "reason": "target_uid missing"},
+                {"code": 400, "reason": "target_identifier missing"},
             )
             return
 
@@ -224,11 +222,21 @@ class RelayHandler(StreamRequestHandler):
         target_info: Optional[ClientConnection] = None
 
         with self.server.lock:
-            target_info = self.server.active_clients.get(target_uid_str)
+            # اگر target_identifier یک عدد باشد، به عنوان user_id در نظر گرفته می‌شود
+            if isinstance(target_identifier, (int, str)) and str(target_identifier).isdigit():
+                # جستجو بر اساس user_id
+                target_info = next(
+                    (client for client in self.server.active_clients.values() 
+                     if client.user_id == int(target_identifier) and client.role == ROLE_TARGET),
+                    None
+                )
+            else:
+                # جستجو بر اساس نام کاربری
+                target_info = self.server.active_clients.get(str(target_identifier))
 
         if not target_info or target_info.role != ROLE_TARGET:
             logger.info(
-                f"[CONNECT_FAIL] Controller {controller_info.username} request for target {target_uid_str}: Target not found or not a target."
+                f"[CONNECT_FAIL] Controller {controller_info.username} request for target {target_identifier}: Target not found or not a target."
             )
             send_json(
                 self.request,
@@ -239,7 +247,7 @@ class RelayHandler(StreamRequestHandler):
 
         if target_info.session_id is not None:
             logger.info(
-                f"[CONNECT_FAIL] Controller {controller_info.username} request for target {target_uid_str}: Target already in a session."
+                f"[CONNECT_FAIL] Controller {controller_info.username} request for target {target_identifier}: Target already in a session."
             )
             send_json(
                 self.request,

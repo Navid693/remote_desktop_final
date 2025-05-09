@@ -372,32 +372,25 @@ class AppController:
                 "Request connection called but not in controller role or client invalid."
             )
 
-    def send_chat_message(self, text: str):
-        if not self.client or not self.current_username or not self.session_id:
-            self.signals.chat_error.emit(
-                "Cannot send chat: Not connected or not in a session."
-            )
-            return
-
-        text = text.strip()
-        if not text:
-            return
-
-        timestamp = datetime.datetime.now().isoformat()
-        sender = self.current_username
-
-        # Display message locally first (optional, if UI doesn't do it on send signal)
-        # self.signals.message_received.emit(sender, text, timestamp)
-
+    def send_chat_message(self, text: str, sender: str = None, timestamp: str = None):
+        """Send a chat message to the connected peer."""
         try:
-            self.client.send_chat(text, sender=sender, timestamp=timestamp)
-            logger.info(f"Chat sent by {sender}: {text}")
-        except ConnectionError as e:
-            self.signals.chat_error.emit(f"Failed to send chat: {e}")
-            logger.error(f"ConnectionError sending chat: {e}")
+            if not text:
+                return
+            
+            if not timestamp:
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            if isinstance(self.client, ControllerClient):
+                self.client.send_chat(text, sender=sender, timestamp=timestamp)
+            else:  # TargetClient
+                self.client.send_chat(text, timestamp=timestamp)
+            
+            # Emit signal for local display
+            self.signals.message_received.emit(sender or self.client.username, text, timestamp)
         except Exception as e:
-            logger.exception("Exception sending chat")
-            self.signals.chat_error.emit(f"An error occurred while sending chat: {e}")
+            logger.error("Exception sending chat", exc_info=True)
+            self.signals.chat_error.emit(str(e))
 
     def request_target_permissions(self, view: bool, mouse: bool, keyboard: bool):
         if (

@@ -69,11 +69,26 @@ class ControllerClient:
             raise
 
     # -------- API --------
-    def request_connect(self, target_username: str) -> None:  # target is username
+    def request_connect(self, target_identifier: str) -> None:
+        """
+        Request connection to a target using either UID or username.
+        Args:
+            target_identifier: Can be either a numeric UID or a username string
+        """
         if not self.sock:
             raise ConnectionError("Not connected")
+            
+        # Try to convert to int if it's a numeric string (UID)
+        try:
+            if target_identifier.isdigit():
+                target_identifier = int(target_identifier)
+        except (ValueError, AttributeError):
+            pass  # Keep as string if not convertible to int
+            
         send_json(
-            self.sock, PacketType.CONNECT_REQUEST, {"target_uid": target_username}
+            self.sock, 
+            PacketType.CONNECT_REQUEST, 
+            {"target_identifier": target_identifier}
         )
 
     def request_permission(

@@ -240,8 +240,8 @@ class WindowManager(QObject):
             self.main_controller_window, "logout_signal"
         ):  # Assuming ControllerWindow emits this
             self.main_controller_window.logout_signal.connect(
-                self.logout_requested.emit
-            )  # WM forwards to AC
+                self._confirm_logout
+            )  # Connect to confirmation method instead
         if hasattr(self.main_controller_window, "toggle_theme_signal"):
             self.main_controller_window.toggle_theme_signal.connect(self.toggle_theme)
 
@@ -271,18 +271,12 @@ class WindowManager(QObject):
             return
 
         # Generic signals always connected
-        if hasattr(self.main_controller_window, "chat_message_signal") and hasattr(
+        if hasattr(self.main_controller_window, "send_chat_requested") and hasattr(
             self.app_controller, "send_chat_message"
         ):
-            # Assuming chat_message_signal(sender, text, timestamp) -> send_chat_message(text)
-            # The main_controller_window._on_send_chat already extracts text.
-            # Let's assume main_controller_window.send_chat_requested = pyqtSignal(str) # text
-            if hasattr(
-                self.main_controller_window, "send_chat_requested"
-            ):  # Expecting a simplified signal
-                self.main_controller_window.send_chat_requested.connect(
-                    self.app_controller.send_chat_message
-                )
+            self.main_controller_window.send_chat_requested.connect(
+                self.app_controller.send_chat_message
+            )
 
         if hasattr(self.main_controller_window, "switch_role_signal") and hasattr(
             self.app_controller, "switch_role"
@@ -378,20 +372,13 @@ class WindowManager(QObject):
     def show_message(
         self, message: str, title: str = "Info", icon=QMessageBox.Information
     ):
+        # Don't show redundant session end messages
+        if title == "Session Ended" and self.main_controller_window is None:
+            return
         msg_box = QMessageBox()
         msg_box.setIcon(icon)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
-        # Apply theme stylesheet to message box if possible
-        current_theme = self.theme_manager.get_current_theme()
-        theme_qss = self.theme_manager._load_stylesheet_content(
-            current_theme
-        )  # Accessing protected member, consider public if used often
-        if theme_qss:
-            # Filter QSS for QDialog or QMessageBox if too broad
-            # For now, applying full theme, might need refinement.
-            # msg_box.setStyleSheet(theme_qss)
-            pass  # Styling QMessageBox can be tricky and might inherit from parent correctly
         msg_box.exec_()
 
     def show_login_error(self, message: str, title: str = "Login Error"):
@@ -495,12 +482,21 @@ class WindowManager(QObject):
         else:
             return {key: False for key in requested_permissions}
 
-    def handle_app_controller_logout(self):
-        """Called when AppController signals logout_complete.""" ""
+    def _confirm_logout(self):
+        """Show confirmation dialog before logging out."""
+        msg_box = QMessageBox(self.main_controller_window)
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setWindowTitle("Confirm Logout")
+        msg_box.setText("Are you sure you want to log out?")
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        
+        if msg_box.exec_() == QMessageBox.Yes:
+            self._logger.info("User confirmed logout")
+            self.logout_requested.emit()
 
-        self._logger.info(
-            "WindowManager handling AppController logout_complete signal."
-        )
+    def handle_app_controller_logout(self):
+        """Called when AppController signals logout_complete."""
         if self.main_controller_window:
             self.main_controller_window.close()
             self.main_controller_window = None
