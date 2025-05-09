@@ -707,24 +707,45 @@ class ControllerWindow(QMainWindow):
         ):
             label_size = self.screen_label.size()
             if label_size.width() <= 0 or label_size.height() <= 0:
-                log.warning(
-                    "Screen label has zero dimensions, cannot normalize mouse coordinates."
-                )
-                return  # Avoid division by zero
+                log.warning("Screen label has zero dimensions, cannot normalize mouse coordinates.")
+                return
 
-            norm_x = event.x() / label_size.width()
-            norm_y = event.y() / label_size.height()
+            # Get the actual QPixmap size being displayed
+            pixmap = self.screen_label.pixmap()
+            if pixmap:
+                pixmap_rect = self.screen_label.pixmap().rect()
+                scaled_rect = pixmap.scaled(
+                    label_size.width(), 
+                    label_size.height(),
+                    Qt.KeepAspectRatio, 
+                    Qt.SmoothTransformation
+                ).rect()
 
-            mouse_data = {
-                "type": "mousemove",
-                "x": event.x(),
-                "y": event.y(),
-                "norm_x": norm_x,
-                "norm_y": norm_y,
-                "buttons": self._get_active_mouse_buttons(event.buttons()),
-                "modifiers": self._get_qt_modifiers(event.modifiers()),
-            }
-            self.input_event_generated.emit(mouse_data)
+                # Calculate the actual display area within the label
+                x_offset = (label_size.width() - scaled_rect.width()) / 2
+                y_offset = (label_size.height() - scaled_rect.height()) / 2
+
+                # Adjust mouse coordinates relative to the actual display area
+                mouse_x = event.x() - x_offset
+                mouse_y = event.y() - y_offset
+
+                # Normalize coordinates only if they're within the display area
+                if (0 <= mouse_x <= scaled_rect.width() and 
+                    0 <= mouse_y <= scaled_rect.height()):
+                    norm_x = mouse_x / scaled_rect.width()
+                    norm_y = mouse_y / scaled_rect.height()
+
+                    mouse_data = {
+                        "type": "mousemove",
+                        "x": int(mouse_x),
+                        "y": int(mouse_y),
+                        "norm_x": norm_x,
+                        "norm_y": norm_y,
+                        "buttons": self._get_active_mouse_buttons(event.buttons()),
+                        "modifiers": self._get_qt_modifiers(event.modifiers()),
+                    }
+                    self.input_event_generated.emit(mouse_data)
+                    log.debug(f"Mouse move data: {mouse_data}")
 
     def _handle_controller_mouse_press(self, event: QMouseEvent):
         if (
@@ -736,26 +757,38 @@ class ControllerWindow(QMainWindow):
             button_name = self._map_qt_mouse_button(event.button())
             if button_name:
                 label_size = self.screen_label.size()
-                if label_size.width() <= 0 or label_size.height() <= 0:
-                    log.warning(
-                        "Screen label has zero dimensions, cannot normalize mouse coordinates for press."
-                    )
-                    norm_x, norm_y = 0.0, 0.0  # Send 0,0 if label not sized
-                else:
-                    norm_x = event.x() / label_size.width()
-                    norm_y = event.y() / label_size.height()
+                pixmap = self.screen_label.pixmap()
+                if pixmap:
+                    pixmap_rect = pixmap.rect()
+                    scaled_rect = pixmap.scaled(
+                        label_size.width(), 
+                        label_size.height(),
+                        Qt.KeepAspectRatio, 
+                        Qt.SmoothTransformation
+                    ).rect()
 
-                mouse_data = {
-                    "type": "mousepress",
-                    "button": button_name,
-                    "x": event.x(),
-                    "y": event.y(),
-                    "norm_x": norm_x,
-                    "norm_y": norm_y,
-                    "modifiers": self._get_qt_modifiers(event.modifiers()),
-                }
-                self.input_event_generated.emit(mouse_data)
-                log.debug(f"Controller mouse press: {mouse_data}")
+                    x_offset = (label_size.width() - scaled_rect.width()) / 2
+                    y_offset = (label_size.height() - scaled_rect.height()) / 2
+
+                    mouse_x = event.x() - x_offset
+                    mouse_y = event.y() - y_offset
+
+                    if (0 <= mouse_x <= scaled_rect.width() and 
+                        0 <= mouse_y <= scaled_rect.height()):
+                        norm_x = mouse_x / scaled_rect.width()
+                        norm_y = mouse_y / scaled_rect.height()
+
+                        mouse_data = {
+                            "type": "mousepress",
+                            "button": button_name,
+                            "x": int(mouse_x),
+                            "y": int(mouse_y),
+                            "norm_x": norm_x,
+                            "norm_y": norm_y,
+                            "modifiers": self._get_qt_modifiers(event.modifiers()),
+                        }
+                        self.input_event_generated.emit(mouse_data)
+                        log.debug(f"Mouse press data: {mouse_data}")
 
     def _handle_controller_mouse_release(self, event: QMouseEvent):
         if (
@@ -767,26 +800,38 @@ class ControllerWindow(QMainWindow):
             button_name = self._map_qt_mouse_button(event.button())
             if button_name:
                 label_size = self.screen_label.size()
-                if label_size.width() <= 0 or label_size.height() <= 0:
-                    log.warning(
-                        "Screen label has zero dimensions, cannot normalize mouse coordinates for release."
-                    )
-                    norm_x, norm_y = 0.0, 0.0  # Send 0,0 if label not sized
-                else:
-                    norm_x = event.x() / label_size.width()
-                    norm_y = event.y() / label_size.height()
+                pixmap = self.screen_label.pixmap()
+                if pixmap:
+                    pixmap_rect = pixmap.rect()
+                    scaled_rect = pixmap.scaled(
+                        label_size.width(), 
+                        label_size.height(),
+                        Qt.KeepAspectRatio, 
+                        Qt.SmoothTransformation
+                    ).rect()
 
-                mouse_data = {
-                    "type": "mouserelease",
-                    "button": button_name,
-                    "x": event.x(),
-                    "y": event.y(),
-                    "norm_x": norm_x,
-                    "norm_y": norm_y,
-                    "modifiers": self._get_qt_modifiers(event.modifiers()),
-                }
-                self.input_event_generated.emit(mouse_data)
-                log.debug(f"Controller mouse release: {mouse_data}")
+                    x_offset = (label_size.width() - scaled_rect.width()) / 2
+                    y_offset = (label_size.height() - scaled_rect.height()) / 2
+
+                    mouse_x = event.x() - x_offset
+                    mouse_y = event.y() - y_offset
+
+                    if (0 <= mouse_x <= scaled_rect.width() and 
+                        0 <= mouse_y <= scaled_rect.height()):
+                        norm_x = mouse_x / scaled_rect.width()
+                        norm_y = mouse_y / scaled_rect.height()
+
+                        mouse_data = {
+                            "type": "mouserelease",
+                            "button": button_name,
+                            "x": int(mouse_x),
+                            "y": int(mouse_y),
+                            "norm_x": norm_x,
+                            "norm_y": norm_y,
+                            "modifiers": self._get_qt_modifiers(event.modifiers()),
+                        }
+                        self.input_event_generated.emit(mouse_data)
+                        log.debug(f"Mouse release data: {mouse_data}")
 
     def _handle_controller_wheel_event(self, event: QWheelEvent):
         if (
