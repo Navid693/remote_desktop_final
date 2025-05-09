@@ -498,22 +498,6 @@ class ControllerWindow(QMainWindow):
         QMessageBox.critical(self, title, message)
 
     def show_message(self, message: str, title: str = "Message"):
-<<<<<<< HEAD
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(title)
-        msg.setText(message)
-        msg.exec_()
-
-    def _update_theme_icon(self, theme_name: str) -> None:
-        """Update moon / sun icon and tooltip according to current theme."""
-        if theme_name == "dark":
-            emoji, tip = "🌙", "Switch to Light Mode"
-        else:
-            emoji, tip = "☀️", "Switch to Dark Mode"
-        self.theme_btn.setText(emoji)
-        self.theme_btn.setToolTip(tip)
-=======
         QMessageBox.information(self, title, message)
 
     def update_peer_status(
@@ -844,4 +828,3 @@ class ControllerWindow(QMainWindow):
         )
         self.logout_signal.emit()  # Ensure AppController cleans up
         super().closeEvent(event)
->>>>>>> ba438f13bf7ac45d361ade55976e6d364cc2a5c3
