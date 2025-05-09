@@ -154,11 +154,11 @@ class Database:
 
     def lookup_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
-        Return {'id', 'username', 'status', 'last_login', 'last_ip'} for given user_id, or None.
+        Return {'id', 'username', 'status', 'last_login', 'last_ip', 'created_at'} for given user_id, or None.
         """
         with self._cursor() as cur:
             cur.execute(
-                "SELECT id, username, status, last_login, last_ip FROM users WHERE id = ?",
+                "SELECT id, username, status, last_login, last_ip, created_at FROM users WHERE id = ?",
                 (user_id,),
             )
             row = cur.fetchone()
@@ -179,6 +179,70 @@ class Database:
                 )
             return True
         except sqlite3.Error:
+            return False
+
+    def list_users(self) -> List[Dict[str, Any]]:
+        """Returns a list of all users (id, username, created_at, last_login, last_ip, status)."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT id, username, created_at, last_login, last_ip, status FROM users ORDER BY id"
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def update_user_password(self, user_id: int, new_password: str) -> bool:
+        """Updates a user's password. Returns True if successful."""
+        new_pw_hash = self._hash_pw(new_password)
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE users SET password = ? WHERE id = ?", (new_pw_hash, user_id)
+            )
+            return cur.rowcount > 0
+
+    def update_user_details(
+        self,
+        user_id: int,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> bool:
+        """Updates a user's username and/or password. Returns True if successful."""
+        if not username and not password:
+            return False  # Nothing to update
+
+        updates = []
+        params = []
+
+        if username:
+            updates.append("username = ?")
+            params.append(username)
+
+        if password:
+            updates.append("password = ?")
+            params.append(self._hash_pw(password))
+
+        params.append(user_id)
+
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = ?"
+
+        with self._cursor() as cur:
+            try:
+                cur.execute(query, tuple(params))
+                return cur.rowcount > 0
+            except sqlite3.IntegrityError:  # e.g. username already exists
+                return False
+
+    def delete_user(self, user_id: int) -> bool:
+        """Deletes a user. Returns True if successful, False otherwise."""
+        # For a production system, consider cascading deletes or marking as inactive.
+        try:
+            with self._cursor() as cur:
+                # Check if the user has active sessions or chat messages first
+                # to prevent IntegrityError if strict FK constraints are on.
+                # Or, handle IntegrityError specifically.
+                cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                return cur.rowcount > 0
+        except sqlite3.IntegrityError:
+            # User might be referenced in other tables (e.g., sessions, chat_msgs)
+            # Depending on desired behavior, you might log this or raise a custom error.
             return False
 
     # ----------------- sessions -----------------
@@ -260,3 +324,39 @@ class Database:
                 "VALUES(?,?,?,?,?)",
                 (ts, level, event, details_json, session_id),
             )
+
+    def get_logs(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        level_filter: Optional[str] = None,
+        event_filter: Optional[str] = None,
+        user_filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieves logs with optional filtering and pagination."""
+        query = "SELECT id, timestamp, level, event, details, session_id FROM logs"
+        params = []
+        conditions = []
+
+        if level_filter:
+            conditions.append("level = ?")
+            params.append(level_filter)
+        if event_filter:
+            conditions.append("event LIKE ?")
+            params.append(f"%{event_filter}%")
+        if (
+            user_filter
+        ):  # This requires joining with users or storing username in log details
+            # Assuming details might contain a username field in its JSON
+            conditions.append("details LIKE ?")
+            params.append(f'%"{user_filter}"%')  # Basic JSON string search
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        with self._cursor() as cur:
+            cur.execute(query, tuple(params))
+            return [dict(row) for row in cur.fetchall()]
