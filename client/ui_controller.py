@@ -394,32 +394,58 @@ class ControllerWindow(QMainWindow):
     def _send_placeholder_frame(self):
         if self.role == "target" and self.session_id and self.peer_username:
             try:
-                # 1. Capture screen
-                pil_image = ImageGrab.grab()
-                if pil_image is None:
-                    log.error("Failed to grab screen: ImageGrab.grab() returned None.")
-                    return
+                import win32gui
+                import win32ui
+                import win32con
+                import win32api
+                from PIL import Image
 
-                # 2. Encode image (using default quality and scale for now)
-                # TODO: Make quality/scale configurable from UI or settings
-                quality = 75
-                scale = 100  # No scaling for now, could be e.g. 50 for 50%
+                screen_width = win32api.GetSystemMetrics(0)
+                screen_height = win32api.GetSystemMetrics(1)
 
-                # Ensure image is RGB before saving as JPEG
-                if pil_image.mode != "RGB":
-                    pil_image = pil_image.convert("RGB")
+                hdesktop = win32gui.GetDesktopWindow()
+                desktop_dc = win32gui.GetWindowDC(hdesktop)
+                img_dc = win32ui.CreateDCFromHandle(desktop_dc)
+                mem_dc = img_dc.CreateCompatibleDC()
 
-                compressed_frame = encode_image(pil_image, quality=quality, scale=scale)
+                screenshot = win32ui.CreateBitmap()
+                screenshot.CreateCompatibleBitmap(img_dc, screen_width, screen_height)
+                mem_dc.SelectObject(screenshot)
 
-                # 3. Emit the frame
+                mem_dc.BitBlt((0, 0), (screen_width, screen_height), img_dc, (0, 0), win32con.SRCCOPY)
+
+                # Draw cursor on screenshot
+                cursor_info = win32gui.GetCursorInfo()
+                if cursor_info[1]:  # Check if cursor is showing
+                    cursor_handle = cursor_info[1]
+                    cursor_pos = win32gui.GetCursorPos()
+                    win32gui.DrawIconEx(mem_dc.GetSafeHdc(), cursor_pos[0], cursor_pos[1],
+                                      cursor_handle, 0, 0, 0, None, win32con.DI_NORMAL)
+
+                # Convert to PIL Image
+                bmpinfo = screenshot.GetInfo()
+                bmpstr = screenshot.GetBitmapBits(True)
+                pil_image = Image.frombuffer(
+                    "RGB",
+                    (bmpinfo["bmWidth"], bmpinfo["bmHeight"]),
+                    bmpstr,
+                    "raw",
+                    "BGRX",
+                    0,
+                    1,
+                )
+
+                # Cleanup Win32 resources
+                mem_dc.DeleteDC()
+                win32gui.ReleaseDC(hdesktop, desktop_dc)
+                win32gui.DeleteObject(screenshot.GetHandle())
+
+                # Compress and send
+                compressed_frame = encode_image(pil_image, quality=75, scale=100)
                 self.frame_to_send_generated.emit(compressed_frame)
-                # log.debug(f"Target sent frame: {len(compressed_frame)} bytes")
 
             except Exception:
-                log.exception("Error capturing or encoding screen frame for target.")
-                # Optionally, stop the timer or notify the user/controller
-                # self._frame_timer.stop()
-                # self.show_error("Error during screen capture. Sharing stopped.")
+                log.exception("Error capturing or encoding screen frame with cursor.")
 
     def _update_role_ui(self):
         """Configures UI elements based on the current role."""

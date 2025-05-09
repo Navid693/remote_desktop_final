@@ -111,7 +111,7 @@ class WindowManager(QObject):
             self.registration_requested.emit
         )
         self.register_window.toggle_theme_signal.connect(self.toggle_theme)
-        # self.register_window.back_signal.connect(self.show_login_window) # If using ui_signup's back button
+        self.register_window.back_to_login_signal.connect(self.show_login_window)  # Updated signal name
 
         # Apply initial theme
         app = QApplication.instance()
@@ -341,7 +341,7 @@ class WindowManager(QObject):
             "Connection Established",
         )
 
-    def update_session_ended_status(self):  # Could take a reason string
+    def update_session_ended_status():  # Could take a reason string
         if self.main_controller_window and hasattr(
             self.main_controller_window, "update_peer_status"
         ):

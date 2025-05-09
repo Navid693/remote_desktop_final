@@ -4,6 +4,7 @@ import datetime
 import logging
 import socket
 from urllib.parse import urlparse
+from win32api import GetSystemMetrics  # Added for screen dimensions
 
 from PyQt5.QtCore import (  # Added Qt for key mapping & threading
     QCoreApplication,
@@ -425,9 +426,12 @@ class AppController:
             and isinstance(self.client, ControllerClient)
             and self.peer_username
         ):
-            if self.granted_permissions.get("mouse") or self.granted_permissions.get(
-                "keyboard"
-            ):  # Basic check
+            # Check that input_data has a valid type
+            if not input_data or "type" not in input_data:
+                logger.warning("Invalid input event: missing type")
+                return
+                
+            if self.granted_permissions.get("mouse") or self.granted_permissions.get("keyboard"):
                 try:
                     self.client.send_input(input_data)
                 except ConnectionError as e:
@@ -436,10 +440,8 @@ class AppController:
                     logger.exception("Error sending input event")
                     self.signals.client_error.emit(0, f"Failed to send input: {e}")
             else:
-                # logger.debug("Attempted to send input without mouse/keyboard permission.")
-                pass  # Silently ignore or log verbosely
+                pass
         else:
-            # logger.debug("Send input called but not in valid controller state.")
             pass
 
     def send_frame_to_controller(self, frame_bytes: bytes):
@@ -485,12 +487,18 @@ class AppController:
 
     def _handle_connect_info_target(self, session_id: int, peer_username: str):
         self.session_id = session_id
-        self.peer_username = peer_username  # This is the controller's username
+        self.peer_username = peer_username
+
+        # Save actual monitor dimensions for accurate mouse mapping
+        screen_width = GetSystemMetrics(0)  
+        screen_height = GetSystemMetrics(1)
+        self.target_screen_dimensions = (screen_width, screen_height)
+
         logger.info(
-            f"Target connected with controller {peer_username} in session {session_id}"
+            f"Target connected with controller {peer_username} in session {session_id} "
+            f"(Screen: {screen_width}x{screen_height})"
         )
         self.signals.connection_established.emit(peer_username, session_id)
-        # Target UI might want to start streaming or show connected status
 
     def _handle_permission_update(self, granted_permissions: dict):  # For Controller
         self.granted_permissions = granted_permissions
@@ -777,33 +785,45 @@ class AppController:
         return None
 
     def _handle_pynput_key_event(self, kb_controller, event_data: dict, press: bool):
+        """تبدیل ساده‌تر و مستقیم‌تر کلیدهای Qt به pynput"""
         qt_key_code = event_data.get("key_code")
         text = event_data.get("text", "")
-        # Modifiers from event_data are currently not directly used to simulate holding them
-        # pynput handles modifier keys (shift, ctrl, alt) as separate key presses/releases.
-        # If 'A' is sent, pynput presses 'a', then releases 'a'.
-        # If 'shift' then 'a' is sent, pynput presses shift, presses 'a', releases 'a', releases shift.
-        # The current ControllerWindow sends modifiers as part of the event,
-        # but for pynput, we primarily care about the key itself.
-        # The `text` field from Qt event already considers Shift for casing, e.g. Shift+a -> text='A'.
-
-        pynput_key_obj = self._map_qt_key_to_pynput(qt_key_code, text)
-
-        if pynput_key_obj:
+        
+        # اگر یک کاراکتر ساده داریم، مستقیماً از آن استفاده می‌کنیم
+        if text and len(text) == 1:
             try:
                 if press:
-                    kb_controller.press(pynput_key_obj)
+                    kb_controller.press(text)
                 else:
-                    kb_controller.release(pynput_key_obj)
+                    kb_controller.release(text)
+                return
             except Exception as e:
-                # pynput can raise errors for certain key combinations or unsupported keys
-                logger.error(
-                    f"pynput error for key {pynput_key_obj} (action: {'press' if press else 'release'}): {e}"
-                )
-        else:
-            logger.warning(
-                f"No pynput mapping for Qt key code {qt_key_code} / text '{text}'"
-            )
+                logger.error(f"خطا در هنگام ارسال کلید {text}: {e}")
+                
+        # برای کلیدهای خاص
+        special_keys = {
+            Qt.Key_Return: keyboard.Key.enter,
+            Qt.Key_Enter: keyboard.Key.enter,
+            Qt.Key_Tab: keyboard.Key.tab,
+            Qt.Key_Space: keyboard.Key.space,
+            Qt.Key_Backspace: keyboard.Key.backspace,
+            Qt.Key_Delete: keyboard.Key.delete,
+            Qt.Key_Escape: keyboard.Key.esc,
+            Qt.Key_Left: keyboard.Key.left,
+            Qt.Key_Right: keyboard.Key.right,
+            Qt.Key_Up: keyboard.Key.up,
+            Qt.Key_Down: keyboard.Key.down,
+        }
+        
+        if qt_key_code in special_keys:
+            try:
+                key = special_keys[qt_key_code]
+                if press:
+                    kb_controller.press(key)
+                else:
+                    kb_controller.release(key)
+            except Exception as e:
+                logger.error(f"خطا در هنگام ارسال کلید خاص {qt_key_code}: {e}")
 
     # --- Role switching ---
     def switch_role(self, new_role: str):

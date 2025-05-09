@@ -93,7 +93,7 @@ class LoginWindow(QWidget):
             )
         body.addWidget(logo)
 
-        title = QLabel("Login")
+        title = QLabel("SCU Remote Desktop")  # Changed from "Login"
         title.setAlignment(Qt.AlignCenter)
         font = title.font()
         font.setPointSize(16)  # Larger title text

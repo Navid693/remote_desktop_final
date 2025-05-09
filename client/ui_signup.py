@@ -177,3 +177,8 @@ class RegistrationWindow(QWidget):
 
     def show_error(self, message: str):
         self._err(message)
+
+    def closeEvent(self, event):
+        """وقتی پنجره بسته میشه، به صفحه لاگین برمیگرده"""
+        self.back_signal.emit()
+        event.accept()
