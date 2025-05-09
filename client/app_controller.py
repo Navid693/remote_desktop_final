@@ -294,6 +294,9 @@ class AppController:
 
     def handle_logout(self):
         logger.info(f"Logout requested for user {self.current_username}")
+        # Cleanup input controllers before disconnecting
+        self._cleanup_input_controllers()
+        
         if self.client:
             try:
                 self.client.disconnect()
@@ -521,6 +524,50 @@ class AppController:
                 "AppController: Event loop not running or None when trying to quit."
             )
 
+    def _cleanup_input_controllers(self):
+        """Reset all input controllers and release any pressed keys/buttons"""
+        if not PYNPUT_AVAILABLE:
+            return
+
+        try:
+            if hasattr(self, '_keyboard_controller'):
+                # Release all possible held modifier keys
+                modifier_keys = [
+                    keyboard.Key.shift,
+                    keyboard.Key.ctrl,
+                    keyboard.Key.alt,
+                    keyboard.Key.cmd,
+                    keyboard.Key.caps_lock,
+                ]
+                for key in modifier_keys:
+                    try:
+                        self._keyboard_controller.release(key)
+                    except Exception:
+                        pass
+
+            if hasattr(self, '_mouse_controller'):
+                # Release all possible held mouse buttons
+                mouse_buttons = [
+                    mouse.Button.left,
+                    mouse.Button.right,
+                    mouse.Button.middle
+                ]
+                for button in mouse_buttons:
+                    try:
+                        self._mouse_controller.release(button)
+                    except Exception:
+                        pass
+
+            # Remove controller instances to force recreation on next use
+            if hasattr(self, '_keyboard_controller'):
+                delattr(self, '_keyboard_controller')
+            if hasattr(self, '_mouse_controller'):
+                delattr(self, '_mouse_controller')
+
+            logger.info("Input controllers cleaned up successfully")
+        except Exception as e:
+            logger.error(f"Error cleaning up input controllers: {e}")
+
     def _handle_client_error(
         self, code: int, reason: str, peer_username_if_disconnect: str | None
     ):
@@ -528,6 +575,10 @@ class AppController:
             f"Client error: code={code}, reason='{reason}', disconnected_peer='{peer_username_if_disconnect}'"
         )
         self.signals.client_error.emit(code, reason)
+        
+        # Cleanup input controllers on any disconnection
+        self._cleanup_input_controllers()
+        
         if (
             code == 410
             and peer_username_if_disconnect
