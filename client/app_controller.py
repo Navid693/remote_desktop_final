@@ -570,6 +570,7 @@ class AppController:
         return tuple(modifiers)
 
     def _handle_input_data(self, input_event_data: dict):
+        """Handle incoming input events from controller"""
         if not PYNPUT_AVAILABLE:
             logger.warning("pynput not available - cannot handle input events")
             return
@@ -584,8 +585,11 @@ class AppController:
             return
 
         try:
-            mouse_controller = mouse.Controller()
-            keyboard_controller = keyboard.Controller()
+            # Create controllers only once if not already created
+            if not hasattr(self, '_mouse_controller'):
+                self._mouse_controller = mouse.Controller()
+            if not hasattr(self, '_keyboard_controller'):    
+                self._keyboard_controller = keyboard.Controller()
 
             # Get screen dimensions for proper mouse positioning
             screen_width, screen_height = self.target_screen_dimensions or (None, None)
@@ -608,15 +612,32 @@ class AppController:
                     target_x = int(norm_x * screen_width)
                     target_y = int(norm_y * screen_height)
                     logger.debug(f"Moving mouse to ({target_x}, {target_y})")
-                    mouse_controller.position = (target_x, target_y)
+                    self._mouse_controller.position = (target_x, target_y)
+                    
+                    # Handle any active buttons during drag
+                    active_buttons = input_event_data.get("buttons", [])
+                    for button_name in active_buttons:
+                        button = getattr(mouse.Button, button_name, None)
+                        if button:
+                            # During drag, maintain button press state
+                            self._mouse_controller.press(button)
 
             elif event_type == "mousepress":
                 button_name = input_event_data.get("button")
-                if button_name:
+                norm_x = input_event_data.get("norm_x")
+                norm_y = input_event_data.get("norm_y")
+                
+                if button_name and norm_x is not None and norm_y is not None:
+                    # Move mouse to click position first
+                    target_x = int(norm_x * screen_width)
+                    target_y = int(norm_y * screen_height)
+                    self._mouse_controller.position = (target_x, target_y)
+                    
+                    # Then perform click
                     button = getattr(mouse.Button, button_name, None)
                     if button:
-                        logger.debug(f"Mouse button press: {button_name}")
-                        mouse_controller.press(button)
+                        logger.debug(f"Mouse button press: {button_name} at ({target_x}, {target_y})")
+                        self._mouse_controller.press(button)
                     else:
                         logger.warning(f"Unknown mouse button: {button_name}")
 
@@ -626,7 +647,7 @@ class AppController:
                     button = getattr(mouse.Button, button_name, None)
                     if button:
                         logger.debug(f"Mouse button release: {button_name}")
-                        mouse_controller.release(button)
+                        self._mouse_controller.release(button)
                     else:
                         logger.warning(f"Unknown mouse button: {button_name}")
 
@@ -635,10 +656,7 @@ class AppController:
                 delta_y = input_event_data.get("delta_y", 0)
                 logger.debug(f"Mouse wheel: dx={delta_x}, dy={delta_y}")
                 # Handle horizontal and vertical scrolling
-                if abs(delta_x) > 0:
-                    mouse_controller.scroll(delta_x, 0)
-                if abs(delta_y) > 0:
-                    mouse_controller.scroll(0, delta_y)
+                self._mouse_controller.scroll(delta_x, delta_y)
 
             # Handle keyboard events
             elif event_type in ("keypress", "keyrelease"):
@@ -657,9 +675,9 @@ class AppController:
                 for mod_key in mod_keys:
                     try:
                         if is_press:
-                            keyboard_controller.press(mod_key)
+                            self._keyboard_controller.press(mod_key)
                         else:
-                            keyboard_controller.release(mod_key)
+                            self._keyboard_controller.release(mod_key)
                     except Exception as e:
                         logger.error(f"Error handling modifier key {mod_key}: {e}")
 
@@ -668,9 +686,9 @@ class AppController:
                     # Try direct text input first for printable characters
                     if text and len(text) == 1 and text.isprintable():
                         if is_press:
-                            keyboard_controller.press(text)
+                            self._keyboard_controller.press(text)
                         else:
-                            keyboard_controller.release(text)
+                            self._keyboard_controller.release(text)
                         logger.debug(f"Handled printable key: {text} ({'press' if is_press else 'release'})")
                         return
 
@@ -715,21 +733,26 @@ class AppController:
                     if qt_key_code in special_keys:
                         key = special_keys[qt_key_code]
                         if is_press:
-                            keyboard_controller.press(key)
+                            self._keyboard_controller.press(key)
                         else:
-                            keyboard_controller.release(key)
+                            self._keyboard_controller.release(key)
                         logger.debug(f"Handled special key: {key} ({'press' if is_press else 'release'})")
                         return
 
                     # Handle any remaining non-printable characters
-                    if text:
-                        if is_press:
-                            keyboard_controller.press(text)
-                        else:
-                            keyboard_controller.release(text)
-                        logger.debug(f"Handled non-printable text: {text}")
-                    else:
-                        logger.warning(f"Unhandled key code: {qt_key_code}")
+                    if text and not text.isprintable():
+                        try:
+                            if is_press:
+                                self._keyboard_controller.press(text)
+                            else:
+                                self._keyboard_controller.release(text)
+                            logger.debug(f"Handled non-printable text: {text}")
+                            return
+                        except Exception as e:
+                            logger.error(f"Error handling non-printable text '{text}': {e}")
+                            return
+
+                    logger.warning(f"Unhandled key code: {qt_key_code}, text: {text}")
 
                 except Exception as e:
                     logger.error(f"Error handling keyboard event: {e}", exc_info=True)

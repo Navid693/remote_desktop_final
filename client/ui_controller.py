@@ -64,29 +64,33 @@ class InputForwardingLabel(QLabel):
         self.setMouseTracking(True)
         self.setAlignment(Qt.AlignCenter)
         self.setObjectName("ScreenDisplayWidget")
+        self._is_dragging = False
+        self._last_click_pos = None
 
     def keyPressEvent(self, event: QKeyEvent):
-        super().keyPressEvent(event)
         self.key_pressed_signal.emit(event)
 
     def keyReleaseEvent(self, event: QKeyEvent):
-        super().keyReleaseEvent(event)
         self.key_released_signal.emit(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        super().mouseMoveEvent(event)
         self.mouse_moved_signal.emit(event)
+        if self._is_dragging:
+            # Emit press event during drag to maintain button state
+            self.mouse_pressed_signal.emit(event)
 
     def mousePressEvent(self, event: QMouseEvent):
-        super().mousePressEvent(event)
         self.setFocus()
+        self._is_dragging = True
+        self._last_click_pos = event.pos()
+        self.mouse_pressed_signal.emit(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        super().mouseReleaseEvent(event)
+        self._is_dragging = False
+        self._last_click_pos = None
         self.mouse_released_signal.emit(event)
 
     def wheelEvent(self, event: QWheelEvent):
-        super().wheelEvent(event)
         self.wheel_event_signal.emit(event)
 
 
