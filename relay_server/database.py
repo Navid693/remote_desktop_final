@@ -164,6 +164,23 @@ class Database:
             row = cur.fetchone()
             return dict(row) if row else None
 
+    def set_user_status(self, username: str, status: str) -> bool:
+        """
+        Update the status of a user.
+        Returns True on success, False if user not found or on error.
+        """
+        user_id = self._user_id(username)
+        if user_id is None:
+            return False
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET status = ? WHERE id = ?", (status, user_id)
+                )
+            return True
+        except sqlite3.Error:
+            return False
+
     # ----------------- sessions -----------------
 
     def open_session(self, controller_id: int, target_id: int) -> int:
