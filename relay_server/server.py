@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import signal
 import socket
 import threading
 from dataclasses import dataclass
@@ -276,10 +275,3 @@ def main():
         server.shutdown()
         server.server_close()
         logger.info("SERVER_STOPPED")
-
-
-# ---------------------------------------------------------------------------
-# CLI entry‑point
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    main()
