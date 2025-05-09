@@ -472,37 +472,7 @@ class RelayHandler(StreamRequestHandler):
 
         if controller_info and controller_info.granted_permissions.get("view"):
             try:
-                # Forwarding raw bytes, so use send_bytes or construct packet carefully
-                # Assuming 'data' is the raw image bytes. Need to wrap it in a FRAME packet.
-                send_json(
-                    controller_info.sock,
-                    PacketType.FRAME,
-                    {"frame_data": "base64_encoded_or_similar"},
-                )  # Placeholder: actual frame data needs proper handling
-                # For raw bytes:
-                # header = struct.pack("!I", len(data))
-                # controller_info.sock.sendall(header + data)
-                # Or if shared.protocol.send_bytes expects PacketType and raw bytes:
-                # shared.protocol.send_bytes(controller_info.sock, PacketType.FRAME, data) # This is likely better.
-                # This part needs to align with how client expects FRAME.
-                # For now, let's assume send_json is used for simplicity, and client decodes "frame_data"
-                # A more efficient way would be to send raw bytes.
-                # If FRAME is purely raw bytes after type, then:
-                #   send_bytes(controller_info.sock, PacketType.FRAME, data)
-                # Let's stick to send_json for consistency for now, assuming data is serializable.
-                # The protocol.py suggests FRAME can be raw bytes.
-                # Let's assume the 'data' received here is the raw bytes of the frame.
-                # We need a way to send PacketType.FRAME followed by these bytes.
-                # The current `recv` tries to parse as JSON first. If it's not JSON, it assumes FRAME and returns raw bytes.
-                # So, to send FRAME, we need to send a non-JSON payload prefixed by its type if we use `send_json`.
-                # This is tricky. `shared.protocol.send_bytes` is the correct way.
-                # However, the `_dispatch_packet` receives `data: Any` which is the parsed JSON data if `recv` succeeded with JSON.
-                # This means `recv` needs to be smarter or we need a different path for binary data.
-                # The current `recv` returns `PacketType.FRAME, payload` where payload is raw bytes if not JSON.
-                # So this `data` IS the raw bytes.
-                # We need `shared.protocol.send_bytes(controller_info.sock, PacketType.FRAME, data)`
-                # This function is not available in the provided context, but `shared.protocol.py` implies it should exist or be similar.
-                # The `shared.protocol.py` has `send_bytes(sock, ptype, data)`
+
                 from shared.protocol import (
                     send_bytes as send_raw_bytes,  # Explicit import if needed
                 )
