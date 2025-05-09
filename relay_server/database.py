@@ -11,6 +11,7 @@ Tables
 
 All tables are auto-created on first use.
 """
+
 import hashlib
 import json
 import sqlite3
@@ -120,7 +121,9 @@ class Database:
                 # Username already exists (unique constraint)
                 return None
 
-    def verify_user(self, username: str, password: str, ip: Optional[str] = None) -> Tuple[bool, Optional[int]]:
+    def verify_user(
+        self, username: str, password: str, ip: Optional[str] = None
+    ) -> Tuple[bool, Optional[int]]:
         """
         Verify credentials; return (True, user_id) on success, (False, None) on failure.
         Also updates last_login and last_ip on success.
@@ -203,7 +206,10 @@ class Database:
                 """,
                 (session_id,),
             )
-            return [(row["timestamp"], row["username"], row["text"]) for row in cur.fetchall()]
+            return [
+                (row["timestamp"], row["username"], row["text"])
+                for row in cur.fetchall()
+            ]
 
     # ----------------- stream events -----------------
 
@@ -228,7 +234,9 @@ class Database:
         session_id: Optional[int] = None,
     ) -> None:
         ts = datetime.now().strftime(DT_FMT)
-        details_json = json.dumps(details) if isinstance(details, dict) else str(details)
+        details_json = (
+            json.dumps(details) if isinstance(details, dict) else str(details)
+        )
         with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO logs(timestamp,level,event,details,session_id) "

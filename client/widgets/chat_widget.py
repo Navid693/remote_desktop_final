@@ -5,13 +5,11 @@ in a WhatsApp/Telegram-style layout using real QWidget-based bubbles.
 Supports dark/light themes, RTL/LTR alignment, dynamic theme switching, and Persian-friendly font.
 """
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFontDatabase
 import re
 
-
-
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QFontDatabase
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 
 class ChatBubble(QWidget):
@@ -31,31 +29,36 @@ class ChatBubble(QWidget):
             QWidget().setLayout(old_layout)
 
         label = QLabel()
-        label.setText(f"<b>{self.sender}</b><br>{self.message}<br><small>{self.timestamp}</small>")
+        label.setText(
+            f"<b>{self.sender}</b><br>{self.message}<br><small>{self.timestamp}</small>"
+        )
         label.setWordWrap(True)
         label.setTextFormat(Qt.RichText)
 
-        is_rtl = bool(re.match(r'^[؀-ۿ]', self.message))
+        is_rtl = bool(re.match(r"^[؀-ۿ]", self.message))
         label.setAlignment(Qt.AlignRight if is_rtl else Qt.AlignLeft)
         label.setLayoutDirection(Qt.RightToLeft if is_rtl else Qt.LeftToRight)
 
         font_family = "Vazirmatn" if is_rtl else "Segoe UI"
         label.setStyleSheet(f"font-family: {font_family};")
 
-        if self.theme == 'light':
+        if self.theme == "light":
             bg = "#DCF8C6" if self.is_self else "#E4E6EB"
             fg = "#000000"
         else:
             bg = "#005C4B" if self.is_self else "#2F3136"
             fg = "#FFFFFF" if self.is_self else "#E5E5E5"
 
-        label.setStyleSheet(label.styleSheet() + f"""
+        label.setStyleSheet(
+            label.styleSheet()
+            + f"""
             background-color: {bg};
             color: {fg};
             border-radius: 12px;
             padding: 8px 12px;
             max-width: 400px;
-        """)
+        """
+        )
 
         layout = QHBoxLayout()
         if self.is_self:
@@ -69,7 +72,7 @@ class ChatBubble(QWidget):
 
 
 class ChatAreaWidget(QScrollArea):
-    def __init__(self, theme='dark', parent=None):
+    def __init__(self, theme="dark", parent=None):
         super().__init__(parent)
         self.theme = theme
         self.setWidgetResizable(True)
@@ -88,6 +91,6 @@ class ChatAreaWidget(QScrollArea):
         self.theme = new_theme
         for i in range(self.layout.count() - 1):
             bubble = self.layout.itemAt(i).widget()
-            if hasattr(bubble, 'theme'):
+            if hasattr(bubble, "theme"):
                 bubble.theme = new_theme
                 bubble._build_ui()

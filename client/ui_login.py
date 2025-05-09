@@ -9,19 +9,26 @@ register_signal()              – open registration form
 toggle_theme_signal()          – toggle light / dark theme
 """
 
-import logging
-import re
 import json
+import logging
 import os
+import re
+
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIntValidator, QPixmap, QIcon
+from PyQt5.QtGui import QIcon, QIntValidator, QPixmap
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCheckBox,
-    QPushButton, QMessageBox, QMainWindow
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 log = logging.getLogger(__name__)
-
 
 
 class LoginWindow(QWidget):
@@ -64,7 +71,9 @@ class LoginWindow(QWidget):
         logo_lbl.setAlignment(Qt.AlignCenter)
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
-            logo_lbl.setPixmap(pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            logo_lbl.setPixmap(
+                pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
         body.addWidget(logo_lbl)
 
         # Title
@@ -101,7 +110,8 @@ class LoginWindow(QWidget):
 
         # Remember‑me
         self.remember_chk = QCheckBox("Remember me")
-        self.remember_chk.setStyleSheet("""
+        self.remember_chk.setStyleSheet(
+            """
             QCheckBox::indicator {
                 width: 20px;
                 height: 20px;
@@ -114,14 +124,16 @@ class LoginWindow(QWidget):
                 background-repeat: no-repeat;
                 border: 1px solid #0078d7;
             }
-        """)
+        """
+        )
         body.addWidget(self.remember_chk)
         body.addSpacing(10)
 
         # Buttons
         self.login_btn = QPushButton("Login")
         self.login_btn.setDefault(True)
-        self.login_btn.setStyleSheet("""
+        self.login_btn.setStyleSheet(
+            """
             QPushButton {
                 background: #3498db;
                 color: white;
@@ -136,12 +148,14 @@ class LoginWindow(QWidget):
             QPushButton:pressed {
                 background: #2472a4;
             }
-        """)
+        """
+        )
         self.login_btn.clicked.connect(self._on_login)
         body.addWidget(self.login_btn)
 
         self.reg_btn = QPushButton("Sign Up")
-        self.reg_btn.setStyleSheet("""
+        self.reg_btn.setStyleSheet(
+            """
             QPushButton {
                 background: #2ecc71;
                 color: white;
@@ -156,7 +170,8 @@ class LoginWindow(QWidget):
             QPushButton:pressed {
                 background: #219a52;
             }
-        """)
+        """
+        )
         self.reg_btn.clicked.connect(self.register_signal.emit)
         body.addWidget(self.reg_btn)
 
@@ -173,7 +188,7 @@ class LoginWindow(QWidget):
         root.addLayout(top)
         root.addLayout(body)
         self.user_in.setFocus()
-        
+
         # Load saved credentials if remember me was checked
         self._load_saved_credentials()
 
@@ -182,13 +197,13 @@ class LoginWindow(QWidget):
         ip, port = self.ip_in.text().strip(), self.port_in.text().strip()
         user, pwd = self.user_in.text().strip(), self.pass_in.text()
         remember = self.remember_chk.isChecked()
-        
+
         if not self._validate(ip, port, user):
             return
-        
+
         # Save credentials if remember me is checked
         self._save_credentials()
-            
+
         base_addr = f"{ip}:{port}"
         log.info("Login attempt @ %s by %s", base_addr, user)
         self.err_lbl.hide()
@@ -210,7 +225,7 @@ class LoginWindow(QWidget):
             data = {
                 "username": self.user_in.text(),
                 "password": self.pass_in.text(),
-                "remember_me": True
+                "remember_me": True,
             }
             try:
                 with open("credentials.json", "w") as f:
@@ -222,7 +237,7 @@ class LoginWindow(QWidget):
                 os.remove("credentials.json")
             except:
                 pass
-                
+
     # basic sanity checks
     def _validate(self, ip: str, port: str, user: str) -> bool:
         if not ip:

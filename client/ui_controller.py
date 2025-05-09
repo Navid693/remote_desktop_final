@@ -1,4 +1,4 @@
-# Path: remote_desktop_final/client/ui_controller.py  
+# Path: remote_desktop_final/client/ui_controller.py
 """
 ControllerWindow — Main window for both Controller and Target roles.
 Allows switching roles, entering target UID, starting screen stream,
@@ -14,17 +14,30 @@ connect_requested(str)  # emitted when user enters UID and clicks connect
 chat_message_signal(str sender, str text, str timestamp)
 """
 
+import datetime
 import logging
 import time
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QLineEdit, QStatusBar, QSizePolicy, QMessageBox, QToolBar, QSplitter
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QStatusBar,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
-import datetime
+
 from client.widgets.chat_widget import ChatAreaWidget
 
 log = logging.getLogger(__name__)
+
 
 class ControllerWindow(QMainWindow):
     chat_message_signal = pyqtSignal(str, str, str)
@@ -33,7 +46,9 @@ class ControllerWindow(QMainWindow):
     switch_role_signal = pyqtSignal(str)
     connect_requested = pyqtSignal(str)
 
-    def __init__(self, username: str, role: str = "controller", user_id: int = None) -> None:
+    def __init__(
+        self, username: str, role: str = "controller", user_id: int = None
+    ) -> None:
         super().__init__()
         self.username = username
         self.user_id = user_id
@@ -78,7 +93,9 @@ class ControllerWindow(QMainWindow):
         conn_layout.addWidget(self.uid_in)
 
         self.connect_btn = QPushButton("Connect")
-        self.connect_btn.clicked.connect(lambda: self.connect_requested.emit(self.uid_in.text().strip()))
+        self.connect_btn.clicked.connect(
+            lambda: self.connect_requested.emit(self.uid_in.text().strip())
+        )
         conn_layout.addWidget(self.connect_btn)
 
         tb.addWidget(conn_widget)
@@ -160,7 +177,9 @@ class ControllerWindow(QMainWindow):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
         self.chat_message_signal.emit(self.username, text, ts)
 
-    def append_chat_message(self, sender: str, text: str, timestamp: str = None) -> None:
+    def append_chat_message(
+        self, sender: str, text: str, timestamp: str = None
+    ) -> None:
         if not timestamp:
             timestamp = datetime.datetime.now().strftime("%H:%M")
         is_self = sender == self.username

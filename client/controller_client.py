@@ -1,10 +1,13 @@
 # remote_desktop_final/client/controller_client.py
-import json, socket, threading, time
+import json
+import logging
+import socket
+import threading
+import time
 from datetime import datetime
 from typing import Callable
-import logging
 
-from shared.protocol import PacketType, send_json, recv
+from shared.protocol import PacketType, recv, send_json
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,11 @@ class ControllerClient:
         self._chat_callback = None
         try:
             self.sock = socket.create_connection((host, port))
-            send_json(self.sock, PacketType.AUTH_REQ, {"username": username, "password": password, "role": "controller"})
+            send_json(
+                self.sock,
+                PacketType.AUTH_REQ,
+                {"username": username, "password": password, "role": "controller"},
+            )
             p, _ = recv(self.sock)
             assert p is PacketType.AUTH_OK, "auth failed"
             threading.Thread(target=self._reader, daemon=True).start()
@@ -32,9 +39,14 @@ class ControllerClient:
     def request_connect(self, target: str) -> None:
         send_json(self.sock, PacketType.CONNECT_REQUEST, {"target_uid": target})
 
-    def request_permission(self, target: str, view=True, mouse=False, keyboard=False) -> None:
-        send_json(self.sock, PacketType.PERM_REQUEST,
-                  {"target": target, "view": view, "mouse": mouse, "keyboard": keyboard})
+    def request_permission(
+        self, target: str, view=True, mouse=False, keyboard=False
+    ) -> None:
+        send_json(
+            self.sock,
+            PacketType.PERM_REQUEST,
+            {"target": target, "view": view, "mouse": mouse, "keyboard": keyboard},
+        )
 
     def on_chat(self, callback):
         """Register callback for incoming chat messages: callback(sender, text, timestamp)"""
@@ -48,12 +60,12 @@ class ControllerClient:
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         if not sender:
             sender = self.username
-            
-        send_json(self.sock, PacketType.CHAT, {
-            "text": text,
-            "sender": sender,
-            "timestamp": timestamp
-        })
+
+        send_json(
+            self.sock,
+            PacketType.CHAT,
+            {"text": text, "sender": sender, "timestamp": timestamp},
+        )
 
     # -------- internal --------
     def _reader(self):

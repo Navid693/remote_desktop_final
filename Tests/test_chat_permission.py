@@ -1,7 +1,10 @@
-import socket, threading, time
-from shared.protocol import PacketType, send_json, recv
-from relay_server.server import RelayServer
+import socket
+import threading
+import time
+
 from relay_server.database import Database
+from relay_server.server import RelayServer
+from shared.protocol import PacketType, recv, send_json
 
 
 def start_server():
@@ -16,8 +19,7 @@ def start_server():
 def auth(host, port, user, pwd, role):
     s = socket.create_connection((host, port))
     s.settimeout(1)  # prevent hang
-    send_json(s, PacketType.AUTH_REQ,
-              {"username": user, "password": pwd, "role": role})
+    send_json(s, PacketType.AUTH_REQ, {"username": user, "password": pwd, "role": role})
     p, _ = recv(s)
     assert p is PacketType.AUTH_OK
     return s
@@ -39,17 +41,29 @@ def test_chat_and_perm():
     assert recv(t_sock)[0] is PacketType.CONNECT_INFO
 
     # permission
-    send_json(c_sock, PacketType.PERM_REQUEST,
-              {"controller": "alice", "target": "bob",
-               "view": True, "mouse": False, "keyboard": False})
+    send_json(
+        c_sock,
+        PacketType.PERM_REQUEST,
+        {
+            "controller": "alice",
+            "target": "bob",
+            "view": True,
+            "mouse": False,
+            "keyboard": False,
+        },
+    )
     assert recv(t_sock)[0] is PacketType.PERM_REQUEST
-    send_json(t_sock, PacketType.PERM_RESPONSE,
-              {"controller": "alice", "granted": {"view": True}})
+    send_json(
+        t_sock,
+        PacketType.PERM_RESPONSE,
+        {"controller": "alice", "granted": {"view": True}},
+    )
     assert recv(c_sock)[0] is PacketType.PERM_RESPONSE
 
     # chat
-    send_json(c_sock, PacketType.CHAT,
-              {"text": "hi", "timestamp": "t", "sender": "alice"})
+    send_json(
+        c_sock, PacketType.CHAT, {"text": "hi", "timestamp": "t", "sender": "alice"}
+    )
     p, data = recv(t_sock)
     assert p is PacketType.CHAT and data["text"] == "hi"
 

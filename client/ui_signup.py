@@ -1,9 +1,14 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
-    QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QLineEdit
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
+
 
 class RegistrationWindow(QWidget):
     register_attempt_signal = pyqtSignal(str, str, str)
@@ -38,7 +43,9 @@ class RegistrationWindow(QWidget):
         logo_lbl.setAlignment(Qt.AlignCenter)
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
-            logo_lbl.setPixmap(pm.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            logo_lbl.setPixmap(
+                pm.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
         body.addWidget(logo_lbl)
 
         title_lbl = QLabel("Create Account")
@@ -71,7 +78,8 @@ class RegistrationWindow(QWidget):
         # Buttons
         body.addSpacing(10)
         self.signup_btn = QPushButton("Create Account")
-        self.signup_btn.setStyleSheet("""
+        self.signup_btn.setStyleSheet(
+            """
             QPushButton {
                 background: #2ecc71;
                 color: white;
@@ -86,13 +94,15 @@ class RegistrationWindow(QWidget):
             QPushButton:pressed {
                 background: #219a52;
             }
-        """)
+        """
+        )
         self.signup_btn.setDefault(True)
         self.signup_btn.clicked.connect(self._on_register)
         body.addWidget(self.signup_btn)
 
         back_btn = QPushButton("Back to Login")
-        back_btn.setStyleSheet("""
+        back_btn.setStyleSheet(
+            """
             QPushButton {
                 background: #3498db;
                 color: white;
@@ -107,7 +117,8 @@ class RegistrationWindow(QWidget):
             QPushButton:pressed {
                 background: #2472a4;
             }
-        """)
+        """
+        )
         back_btn.clicked.connect(self.back_signal.emit)
         body.addWidget(back_btn)
 
@@ -165,4 +176,4 @@ class RegistrationWindow(QWidget):
         self.theme_btn.setToolTip(tip)
 
     def show_error(self, message: str):
-        self._err(message) 
+        self._err(message)

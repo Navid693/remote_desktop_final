@@ -1,8 +1,18 @@
 # File: test_chat_widget.py
-import sys
 import datetime
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QHBoxLayout
+import sys
+
+from PyQt5.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
 from client.widgets.chat_widget import ChatAreaWidget
+
 
 class TestWindow(QMainWindow):
     def __init__(self):
@@ -20,7 +30,7 @@ class TestWindow(QMainWindow):
         main_layout.addWidget(self.toggle_btn)
 
         # Chat display
-        self.theme = 'light'
+        self.theme = "light"
         self.chat = ChatAreaWidget(theme=self.theme)
         main_layout.addWidget(self.chat)
 
@@ -35,14 +45,22 @@ class TestWindow(QMainWindow):
             ("mia", "نه مشکلی نیست! 👍 ایموجی پشتیبانی میشه.", False),
             ("ali", "1234567890 - تست با اعداد", True),
             ("mia", "Special chars: !@#$%^&*()", False),
-            ("ali", "یک پیام بسیار بسیار طولانی برای بررسی wrap شدن متن درون حباب چت که به صورت خودکار باید در چند خط نمایش داده شود و همچنان استایل حفظ شود.", True),
-            ("mia", "Here's a very long English message to test wrapping across multiple lines. The bubble should still look neat and align well regardless of content size.", False),
+            (
+                "ali",
+                "یک پیام بسیار بسیار طولانی برای بررسی wrap شدن متن درون حباب چت که به صورت خودکار باید در چند خط نمایش داده شود و همچنان استایل حفظ شود.",
+                True,
+            ),
+            (
+                "mia",
+                "Here's a very long English message to test wrapping across multiple lines. The bubble should still look neat and align well regardless of content size.",
+                False,
+            ),
             ("ali", "حتی اگر فقط یک کلمه باشد", True),
             ("mia", "Word!", False),
             ("ali", "چپ یا راست؟", True),
             ("mia", "Right or left?", False),
             ("ali", "امتحان جهت نوشتار فارسی.", True),
-            ("mia", "Testing English direction in reply.", False)
+            ("mia", "Testing English direction in reply.", False),
         ]
 
         for sender, message, is_self in test_messages:
@@ -50,9 +68,12 @@ class TestWindow(QMainWindow):
             self.chat.append_message(sender, message, timestamp, is_self)
 
     def toggle_theme(self):
-        self.theme = 'dark' if self.theme == 'light' else 'light'
+        self.theme = "dark" if self.theme == "light" else "light"
         self.chat.update_theme(self.theme)
-        self.toggle_btn.setText("Switch to Light Mode" if self.theme == 'dark' else "Switch to Dark Mode")
+        self.toggle_btn.setText(
+            "Switch to Light Mode" if self.theme == "dark" else "Switch to Dark Mode"
+        )
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

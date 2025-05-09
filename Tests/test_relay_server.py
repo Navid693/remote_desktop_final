@@ -14,6 +14,7 @@ End‑to‑end pairing test for *relay_server.server*.
    root cannot be located, the tests are **skipped** with an informative
    message instead of raising an exception.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -27,8 +28,11 @@ from types import ModuleType
 from typing import Tuple
 
 import pytest
-pytest.skip("pairing test relies on old server flow – will be rewritten after stream integration",
-            allow_module_level=True)
+
+pytest.skip(
+    "pairing test relies on old server flow – will be rewritten after stream integration",
+    allow_module_level=True,
+)
 
 # ---------------------------------------------------------------------------
 # Locate project root so that "shared" and "relay_server" packages resolve
@@ -42,7 +46,10 @@ for parent in THIS_FILE.parents:
         break
 
 if PROJECT_ROOT is None:
-    pytest.skip("cannot find project root containing 'shared/' and 'relay_server/'", allow_module_level=True)
+    pytest.skip(
+        "cannot find project root containing 'shared/' and 'relay_server/'",
+        allow_module_level=True,
+    )
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -63,6 +70,7 @@ RelayServer = relay_mod.RelayServer  # noqa: N806
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _start_server() -> Tuple[RelayServer, int, threading.Thread]:
     """Starts RelayServer in background and returns (server, port, thread)."""
     srv = RelayServer(host="127.0.0.1", port=0)
@@ -74,9 +82,15 @@ def _start_server() -> Tuple[RelayServer, int, threading.Thread]:
     return srv, port, t
 
 
-def _connect_and_auth(username: str, password: str, role: str, port: int) -> socket.socket:
+def _connect_and_auth(
+    username: str, password: str, role: str, port: int
+) -> socket.socket:
     s = socket.create_connection(("127.0.0.1", port))
-    send_json(s, PacketType.AUTH_REQ, {"username": username, "password": password, "role": role})
+    send_json(
+        s,
+        PacketType.AUTH_REQ,
+        {"username": username, "password": password, "role": role},
+    )
     ptype, _ = recv(s)
     assert ptype is PacketType.AUTH_OK, f"auth failed for {username}"
     return s
@@ -85,6 +99,7 @@ def _connect_and_auth(username: str, password: str, role: str, port: int) -> soc
 # ---------------------------------------------------------------------------
 # Test case
 # ---------------------------------------------------------------------------
+
 
 def test_pairing_flow():
     srv, port, th = _start_server()

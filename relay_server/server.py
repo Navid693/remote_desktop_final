@@ -1,19 +1,21 @@
 # remote_desktop_final/relay_server/server.py
 from __future__ import annotations
-import socket, threading, signal
-from dataclasses import dataclass
-from typing import Dict, Optional
-import logging
-from socketserver import ThreadingTCPServer, StreamRequestHandler
-from shared.protocol import PacketType, recv, send_json
+
 import datetime
+import logging
+import signal
+import socket
+import threading
+from dataclasses import dataclass
+from socketserver import StreamRequestHandler, ThreadingTCPServer
+from typing import Dict, Optional
 
 from relay_server.database import Database
 from relay_server.logger import get_logger
+from shared.protocol import PacketType, recv, send_json
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] relay: %(message)s'
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] relay: %(message)s"
 )
 logger = logging.getLogger("relay")
 
@@ -31,7 +33,7 @@ class ClientInfo:
     username: str
     role: str
     session_id: Optional[int] = None
-    permissions: dict = None   # view/mouse/keyboard
+    permissions: dict = None  # view/mouse/keyboard
 
 
 class RelayHandler(StreamRequestHandler):
@@ -51,7 +53,9 @@ class RelayHandler(StreamRequestHandler):
         except ValueError:
             pass
         # Log disconnect with as much info as possible
-        logger.info(f"[DISCONNECT] Client closed: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}")
+        logger.info(
+            f"[DISCONNECT] Client closed: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}"
+        )
         super().finish()
 
     def handle(self):
@@ -62,7 +66,9 @@ class RelayHandler(StreamRequestHandler):
             try:
                 pkt, data = recv(self.request)
             except ConnectionError:
-                logger.info(f"[DISCONNECT] Client disconnected: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}")
+                logger.info(
+                    f"[DISCONNECT] Client disconnected: IP={self._client_addr[0]} PORT={self._client_addr[1]} USER={self._username or '?'}"
+                )
                 return
             except Exception:
                 logger.exception("Unexpected error in handler")
@@ -86,24 +92,27 @@ class RelayHandler(StreamRequestHandler):
                 text = data.get("text", "")
                 ts = data.get("timestamp", datetime.datetime.now().strftime("%H:%M:%S"))
                 sender = self._username
-                
+
                 # Log the message
                 logger.info(f"[CHAT] {ts} {sender}: {text}")
-                
+
                 # Store in database if we have a session
                 if self._session_id:
                     try:
                         db.add_chat_msg(self._session_id, self._username, text)
                     except Exception as e:
                         logger.error(f"Failed to store chat message: {e}")
-                
+
                 # Broadcast to all clients in the same session
                 with self._lock:
                     for client_sock in list(getattr(self.server, "clients", [])):
                         if client_sock != self.request:  # Don't send back to sender
                             try:
-                                send_json(client_sock, PacketType.CHAT,
-                                        {"text": text, "timestamp": ts, "sender": sender})
+                                send_json(
+                                    client_sock,
+                                    PacketType.CHAT,
+                                    {"text": text, "timestamp": ts, "sender": sender},
+                                )
                             except Exception as e:
                                 logger.warning(f"Failed to send chat to a client: {e}")
                                 try:
@@ -132,7 +141,9 @@ class RelayServer:
         try:
             while True:
                 conn, addr = self._srv.accept()
-                threading.Thread(target=self._handle_client, args=(conn, addr), daemon=True).start()
+                threading.Thread(
+                    target=self._handle_client, args=(conn, addr), daemon=True
+                ).start()
         finally:
             self._srv.close()
             log.info("SERVER_STOP")
@@ -155,8 +166,13 @@ class RelayServer:
             send_json(sock, PacketType.AUTH_OK, {})
             log.info("AUTH_OK user=%s role=%s", username, role)
 
-            info = ClientInfo(sock, addr, username, role,
-                              permissions={"view": False, "mouse": False, "keyboard": False})
+            info = ClientInfo(
+                sock,
+                addr,
+                username,
+                role,
+                permissions={"view": False, "mouse": False, "keyboard": False},
+            )
             with self._lock:
                 self._clients[username] = info
 
@@ -185,11 +201,19 @@ class RelayServer:
                 sid = db.open_session(info.username, target.username)
                 info.session_id = target.session_id = sid
 
-                send_json(info.sock, PacketType.CONNECT_INFO,
-                          {"peer": f"{target.addr[0]}:{target.addr[1]}", "session": sid})
-                send_json(target.sock, PacketType.CONNECT_INFO,
-                          {"peer": f"{info.addr[0]}:{info.addr[1]}", "session": sid})
-                log.info("CONNECT_INFO %s→%s sid=%d", info.username, target.username, sid)
+                send_json(
+                    info.sock,
+                    PacketType.CONNECT_INFO,
+                    {"peer": f"{target.addr[0]}:{target.addr[1]}", "session": sid},
+                )
+                send_json(
+                    target.sock,
+                    PacketType.CONNECT_INFO,
+                    {"peer": f"{info.addr[0]}:{info.addr[1]}", "session": sid},
+                )
+                log.info(
+                    "CONNECT_INFO %s→%s sid=%d", info.username, target.username, sid
+                )
 
             # ----- permission negotiation -----
             elif ptype is PacketType.PERM_REQUEST and info.role == ROLE_CONTROLLER:
@@ -204,7 +228,9 @@ class RelayServer:
                     controller = self._clients.get(data["controller"])
                 if controller:
                     controller.permissions = granted
-                    send_json(controller.sock, PacketType.PERM_RESPONSE, {"granted": granted})
+                    send_json(
+                        controller.sock, PacketType.PERM_RESPONSE, {"granted": granted}
+                    )
                     db.log("INFO", "PERM_GRANTED", granted, controller.session_id)
 
             # ----- chat -----
@@ -215,8 +241,15 @@ class RelayServer:
                 with self._lock:
                     for cli in self._clients.values():
                         if cli.session_id == info.session_id:
-                            send_json(cli.sock, PacketType.CHAT,
-                                      {"text": text, "timestamp": ts, "sender": info.username})
+                            send_json(
+                                cli.sock,
+                                PacketType.CHAT,
+                                {
+                                    "text": text,
+                                    "timestamp": ts,
+                                    "sender": info.username,
+                                },
+                            )
 
             # ----- disconnect -----
             elif ptype is PacketType.DISCONNECT:
@@ -226,6 +259,7 @@ class RelayServer:
 
             else:
                 send_json(info.sock, PacketType.ERROR, {"code": 400})
+
 
 def main():
     host, port = "0.0.0.0", 9009
@@ -242,6 +276,7 @@ def main():
         server.shutdown()
         server.server_close()
         logger.info("SERVER_STOPPED")
+
 
 # ---------------------------------------------------------------------------
 # CLI entry‑point

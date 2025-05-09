@@ -1,7 +1,9 @@
 """
 Target main window – includes ChatWidget and a simple permission dialog.
 """
+
 from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
@@ -10,6 +12,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -20,13 +23,15 @@ from PyQt5.QtWidgets import (
     QSplitter,
     QWidget,
 )
-from PyQt5.QtCore import Qt
-from client.widgets.chat_widget import ChatWidget
+
 from client.target_client import TargetClient
+from client.widgets.chat_widget import ChatWidget
 
 
 class PermDialog(QDialog):
-    def __init__(self, req: dict[str, bool], controller: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, req: dict[str, bool], controller: str, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"Access request from {controller}")
         self.view = QCheckBox("Allow view", checked=req["view"])
