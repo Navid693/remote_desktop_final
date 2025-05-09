@@ -16,6 +16,7 @@ import re
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon, QIntValidator, QPixmap
+from PyQt5.QtWidgets import QComboBox  # Added QComboBox
 from PyQt5.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -33,7 +34,8 @@ log = logging.getLogger(__name__)
 
 class LoginWindow(QWidget):
     # -------------------------------------------------- signals
-    login_attempt_signal = pyqtSignal(str, str, str, bool)
+    # Added role (str) to the signal
+    login_attempt_signal = pyqtSignal(str, str, str, str, bool)
     register_signal = pyqtSignal()
     toggle_theme_signal = pyqtSignal()
 
@@ -107,6 +109,12 @@ class LoginWindow(QWidget):
         self.pass_in = QLineEdit()
         self.pass_in.setEchoMode(QLineEdit.Password)
         body.addWidget(self.pass_in)
+
+        # Role selection
+        body.addWidget(QLabel("Login as:"))
+        self.role_combo = QComboBox()
+        self.role_combo.addItems(["Controller", "Target"])
+        body.addWidget(self.role_combo)
 
         # Remember‑me
         self.remember_chk = QCheckBox("Remember me")
@@ -196,18 +204,21 @@ class LoginWindow(QWidget):
     def _on_login(self) -> None:
         ip, port = self.ip_in.text().strip(), self.port_in.text().strip()
         user, pwd = self.user_in.text().strip(), self.pass_in.text()
+        # Get selected role, default to 'controller' if something goes wrong
+        selected_role_text = self.role_combo.currentText().lower()
+        role = "controller" if selected_role_text == "controller" else "target"
         remember = self.remember_chk.isChecked()
 
         if not self._validate(ip, port, user):
             return
 
         # Save credentials if remember me is checked
-        self._save_credentials()
+        self._save_credentials()  # This might need to save role too if we want to remember it
 
         base_addr = f"{ip}:{port}"
-        log.info("Login attempt @ %s by %s", base_addr, user)
+        log.info("Login attempt @ %s by %s as %s", base_addr, user, role)
         self.err_lbl.hide()
-        self.login_attempt_signal.emit(base_addr, user, pwd, remember)
+        self.login_attempt_signal.emit(base_addr, user, pwd, role, remember)
 
     def _load_saved_credentials(self):
         try:
@@ -217,14 +228,24 @@ class LoginWindow(QWidget):
                     self.user_in.setText(data.get("username", ""))
                     self.pass_in.setText(data.get("password", ""))
                     self.remember_chk.setChecked(True)
+                    saved_role = data.get("role", "controller")
+                    if saved_role == "controller":
+                        self.role_combo.setCurrentIndex(0)
+                    elif saved_role == "target":
+                        self.role_combo.setCurrentIndex(1)
         except:
             pass
 
     def _save_credentials(self):
         if self.remember_chk.isChecked():
+            selected_role_text = self.role_combo.currentText().lower()
+            role_to_save = (
+                "controller" if selected_role_text == "controller" else "target"
+            )
             data = {
                 "username": self.user_in.text(),
                 "password": self.pass_in.text(),
+                "role": role_to_save,
                 "remember_me": True,
             }
             try:
