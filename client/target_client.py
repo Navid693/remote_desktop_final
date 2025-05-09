@@ -114,6 +114,7 @@ class TargetClient:
     def on_input_data(self, callback: Callable[[Dict[str, Any]], None]):
         """Register callback for incoming input data: callback(input_event_data)"""
         self._input_data_callback = callback
+        logger.info("Input data callback registered")
 
     def send_frame_data(self, frame_bytes: bytes):
         """Send screen frame data to the server (and then to controller)."""
@@ -242,7 +243,14 @@ class TargetClient:
             ptype is PacketType.INPUT
         ):  # Target receives INPUT from controller (via server)
             if isinstance(data, dict) and self._input_data_callback:
-                self._input_data_callback(data)
+                input_event = data.get("input_event", {})
+                if input_event:  # Only process if we have actual input data
+                    logger.debug(f"Received input event: {input_event}")
+                    self._input_data_callback(input_event)
+                else:
+                    logger.warning("Received INPUT packet with empty input_event")
+            else:
+                logger.warning("Received INPUT but no callback registered")
 
         elif ptype is PacketType.ERROR:
             if isinstance(data, dict):
