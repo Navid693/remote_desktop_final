@@ -1,18 +1,20 @@
 # Path: main.py
 
-import sys
 import logging
+import sys
+
 from PyQt5.QtWidgets import QApplication
-from shared.constants import DEFAULT_THEME
+
+from client.app_controller import AppController
 from client.theme_manager import ThemeManager
 from client.window_manager import WindowManager
-from client.app_controller import AppController
+from shared.constants import DEFAULT_THEME
+
 
 def main():
     # === Logging Configuration ===
     logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
     logger = logging.getLogger("Main")
     logger.info("Launching SCU Remote Desktop Client App...")
@@ -28,6 +30,7 @@ def main():
     controller.run()
 
     sys.exit(app.exec_())
+
 
 if __name__ == "__main__":
     main()

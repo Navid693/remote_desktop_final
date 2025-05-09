@@ -8,6 +8,7 @@ will add the project root directory at runtime so that ``import
 shared.protocol`` always works. **Never touch production code here –– only
 test logic lives in this file.**
 """
+
 from __future__ import annotations
 
 import importlib
@@ -46,6 +47,7 @@ PacketType = shared_protocol.PacketType  # noqa: N806 – keep original name
 # Helper – start a tiny echo server in background thread
 # ---------------------------------------------------------------------------
 
+
 def _start_echo_server() -> Tuple[str, int]:
     """Returns (host, port) of a local echo server ready to accept one peer."""
     host, port = "127.0.0.1", 0
@@ -70,6 +72,7 @@ def _start_echo_server() -> Tuple[str, int]:
 # ---------------------------------------------------------------------------
 # Test cases
 # ---------------------------------------------------------------------------
+
 
 def test_auth_roundtrip():
     """Controller → Relay → Controller round‑trip for AUTH messages."""

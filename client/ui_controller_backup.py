@@ -16,11 +16,22 @@ toggle_theme_signal()
 
 import logging
 import time
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPixmap, QTextCursor
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QPlainTextEdit, QLineEdit, QStatusBar, QSizePolicy, QMessageBox, QTextEdit
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QStatusBar,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 log = logging.getLogger(__name__)
@@ -135,13 +146,15 @@ class ControllerWindow(QMainWindow):
     # ---------- new method ----------
     def append_chat_message(self, sender: str, text: str, timestamp: str) -> None:
         # Debug print to verify alignment logic
-        print(f"DEBUG: self.username={self.username}, sender={sender}, is_me={sender == self.username}")
-        is_me = (sender == self.username)
-        color = '#0078d7' if is_me else '#222'
-        bg = '#e6f2ff' if is_me else '#f8f8f8'
+        print(
+            f"DEBUG: self.username={self.username}, sender={sender}, is_me={sender == self.username}"
+        )
+        is_me = sender == self.username
+        color = "#0078d7" if is_me else "#222"
+        bg = "#e6f2ff" if is_me else "#f8f8f8"
         # Use a table with two columns: left for received, right for sent
         if is_me:
-            html = f'''
+            html = f"""
             <table width="100%"><tr>
                 <td></td>
                 <td align="right" style="width:60%;">
@@ -151,9 +164,9 @@ class ControllerWindow(QMainWindow):
                     </div>
                 </td>
             </tr></table>
-            '''
+            """
         else:
-            html = f'''
+            html = f"""
             <table width="100%"><tr>
                 <td align="left" style="width:60%;">
                     <div style="display:inline-block; background:{bg}; color:{color}; border-radius:8px; padding:6px 12px; margin:4px 0; max-width:100%;">
@@ -163,7 +176,7 @@ class ControllerWindow(QMainWindow):
                 </td>
                 <td></td>
             </tr></table>
-            '''
+            """
         self.chat_disp.append(html)
         self.chat_disp.moveCursor(QTextCursor.End)
 

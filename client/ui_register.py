@@ -9,10 +9,17 @@ toggle_theme_signal()
 """
 
 import logging
+
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 log = logging.getLogger(__name__)
@@ -50,7 +57,9 @@ class RegistrationWindow(QWidget):
         logo.setAlignment(Qt.AlignCenter)
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
-            logo.setPixmap(pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            logo.setPixmap(
+                pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
         body.addWidget(logo)
 
         title = QLabel("Create Account")
@@ -78,7 +87,8 @@ class RegistrationWindow(QWidget):
         body.addSpacing(10)
 
         self.reg_btn = QPushButton("Create account")
-        self.reg_btn.setStyleSheet("""
+        self.reg_btn.setStyleSheet(
+            """
             QPushButton {
                 background: #2ecc71;
                 color: white;
@@ -93,7 +103,8 @@ class RegistrationWindow(QWidget):
             QPushButton:pressed {
                 background: #219a52;
             }
-        """)
+        """
+        )
         self.reg_btn.setDefault(True)
         self.reg_btn.clicked.connect(self._on_register)
         body.addWidget(self.reg_btn)
@@ -112,7 +123,11 @@ class RegistrationWindow(QWidget):
 
     # --------------------------------------------------
     def _on_register(self) -> None:
-        usr, pwd, cpwd = self.user_in.text().strip(), self.pwd_in.text(), self.cpwd_in.text()
+        usr, pwd, cpwd = (
+            self.user_in.text().strip(),
+            self.pwd_in.text(),
+            self.cpwd_in.text(),
+        )
 
         if not usr:
             return self._err("Username required.")

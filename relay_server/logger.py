@@ -2,6 +2,7 @@
 ======================
 Logger that writes to console **and** to the SQLite *logs* table.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,7 +22,8 @@ class DBHandler(logging.Handler):
         try:
             # Keep only extras that are JSON‑serialisable
             extras: Dict[str, Any] = {
-                k: str(v) for k, v in record.__dict__.items()
+                k: str(v)
+                for k, v in record.__dict__.items()
                 if k not in logging.LogRecord.__dict__
             }
             self.db.log(record.levelname, record.msg, extras)
@@ -43,7 +45,9 @@ def get_logger(db: Database, name: str = "relay") -> logging.Logger:
         logger.addHandler(ch)
 
     # DB handler (deduplicated per DB path)
-    if not any(isinstance(h, DBHandler) and h.db.path == db.path for h in logger.handlers):
+    if not any(
+        isinstance(h, DBHandler) and h.db.path == db.path for h in logger.handlers
+    ):
         logger.addHandler(DBHandler(db))
 
     return logger
