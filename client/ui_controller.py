@@ -116,7 +116,12 @@ class ControllerWindow(QMainWindow):
         self.session_id: int | None = None
         self.active_permissions: dict = {}
         self.is_recording = False
-
+        
+        # Add FPS tracking
+        self._frame_count = 0
+        self._last_fps_update = time.time()
+        self._current_fps = 0
+        
         self._session_start_time = time.time()
         self._frame_timer = QTimer(self)
         self._build_ui()
@@ -331,7 +336,9 @@ class ControllerWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.session_timer_label = QLabel("Session: 00:00:00")
+        self.fps_label = QLabel("FPS: 0")
         self.status_bar.addPermanentWidget(QLabel(f"User: {self.username}"))
+        self.status_bar.addPermanentWidget(self.fps_label)
         self.status_bar.addPermanentWidget(self.session_timer_label)
 
         self._timer = QTimer(self)
@@ -558,8 +565,18 @@ class ControllerWindow(QMainWindow):
         else:
             self.connect_button.setIcon(QIcon("assets/icons/broken-link.png"))
             self.connect_button.setText("Connect")
+        
         if connected and peer_username:
-            self.peer_status_label.setText(f"Connected to: {peer_username}")
+            # Extract IP and port from peer_username if present (format: username@ip:port)
+            ip_port = ""
+            if "@" in peer_username:
+                username, connection = peer_username.split("@", 1)
+                if ":" in connection:
+                    ip, port = connection.split(":", 1)
+                    ip_port = f" ({ip}:{port})"
+                    peer_username = username
+            
+            self.peer_status_label.setText(f"Connected to: {peer_username}{ip_port}")
             if session_id:
                 self.session_id_label.setText(f"Session ID: {session_id}")
             else:
@@ -580,6 +597,16 @@ class ControllerWindow(QMainWindow):
 
     def display_frame(self, frame_bytes: bytes):
         if self.role == "controller":
+            # Update FPS counter
+            self._frame_count += 1
+            current_time = time.time()
+            time_diff = current_time - self._last_fps_update
+            if time_diff >= 1.0:  # Update FPS every second
+                self._current_fps = int(self._frame_count / time_diff)
+                self.fps_label.setText(f"FPS: {self._current_fps}")
+                self._frame_count = 0
+                self._last_fps_update = current_time
+
             if not self.active_permissions.get("view", False):
                 self.screen_label.setText("View permission not granted by target.")
                 return

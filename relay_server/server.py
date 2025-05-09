@@ -285,14 +285,20 @@ class RelayHandler(StreamRequestHandler):
             target_info.session_id = session_id
             target_info.peer_username = controller_info.username
 
+        # Format usernames with IP:port for display
+        controller_addr = f"{controller_info.addr[0]}:{controller_info.addr[1]}"
+        target_addr = f"{target_info.addr[0]}:{target_info.addr[1]}"
+        controller_display = f"{controller_info.username}@{controller_addr}"
+        target_display = f"{target_info.username}@{target_addr}"
+
         # Notify both clients
         connect_info_payload_for_controller = {
-            "peer_username": target_info.username,
+            "peer_username": target_display,  # Include IP:port in username
             "session_id": session_id,
             "role": "controller",
         }
         connect_info_payload_for_target = {
-            "peer_username": controller_info.username,
+            "peer_username": controller_display,  # Include IP:port in username
             "session_id": session_id,
             "role": "target",
         }
@@ -307,7 +313,7 @@ class RelayHandler(StreamRequestHandler):
         )
 
         logger.info(
-            f"[SESSION_START] Session {session_id} started: {controller_info.username} (Controller) ↔ {target_info.username} (Target)"
+            f"[SESSION_START] Session {session_id} started: {controller_display} (Controller) ↔ {target_display} (Target)"
         )
         db.log(
             "INFO",
