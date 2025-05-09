@@ -203,3 +203,12 @@ class ControllerWindow(QMainWindow):
         msg.setWindowTitle(title)
         msg.setText(message)
         msg.exec_()
+
+    def _update_theme_icon(self, theme_name: str) -> None:
+        """Update moon / sun icon and tooltip according to current theme."""
+        if theme_name == "dark":
+            emoji, tip = "🌙", "Switch to Light Mode"
+        else:
+            emoji, tip = "☀️", "Switch to Dark Mode"
+        self.theme_btn.setText(emoji)
+        self.theme_btn.setToolTip(tip)
