@@ -3,9 +3,10 @@
 import datetime
 import logging
 import socket
+from typing import Optional
 from urllib.parse import urlparse
 
-from PyQt5.QtCore import (  # Added Qt for key mapping & threading
+from PyQt5.QtCore import (
     QCoreApplication,
     QEventLoop,
     QObject,
@@ -16,17 +17,12 @@ from PyQt5.QtCore import (  # Added Qt for key mapping & threading
 
 from client.controller_client import ControllerClient
 from client.target_client import TargetClient
-from relay_server.database import (  # Usually client doesn't use relay_server.database directly for users.
+from relay_server.database import (
     Database,
 )
 
-# But here it's used for local user registration simulation.
-# In a real scenario, registration would be against the server.
-# For now, keeping as is for local user management.
-
-# Imports for pynput and screen size
 try:
-    from PIL import ImageGrab  # To get screen dimensions for mouse scaling
+    from PIL import ImageGrab
     from pynput import keyboard, mouse
 
     PYNPUT_AVAILABLE = True
@@ -41,87 +37,64 @@ logger = logging.getLogger("AppController")
 
 
 class AppSignals(QObject):
-    """Container for various signals used by AppController to communicate with UI or other components."""
+    message_received = pyqtSignal(str, str, str)
+    chat_error = pyqtSignal(str)
 
-    # Chat
-    message_received = pyqtSignal(str, str, str)  # sender, text, timestamp
-    chat_error = pyqtSignal(str)  # error message
-
-    # Connection & Session
-    connection_established = pyqtSignal(str, int)  # peer_username, session_id
-    peer_disconnected = pyqtSignal(str)  # peer_username
+    connection_established = pyqtSignal(str, int)
+    peer_disconnected = pyqtSignal(str)
     session_ended = pyqtSignal()
 
-    # Permissions (for Controller UI)
-    permissions_updated = pyqtSignal(dict)  # granted_permissions
+    permissions_updated = pyqtSignal(dict)
 
-    # Screen sharing (for Controller UI to display frames)
     frame_received = pyqtSignal(bytes)
 
-    # General errors
-    client_error = pyqtSignal(int, str)  # code, reason
+    client_error = pyqtSignal(int, str)
 
-    # UI state updates
-    role_changed = pyqtSignal(str)  # new_role
-    login_success = pyqtSignal(str, int, str)  # username, user_id, role
+    role_changed = pyqtSignal(str)
+    login_success = pyqtSignal(str, int, str)
+    admin_login_success = pyqtSignal(str)
     logout_complete = pyqtSignal()
 
-    # For permission dialog (Target role)
-    # Emitted by AppController from worker thread to ask WindowManager (main thread) to show dialog
-    ui_show_permission_dialog_requested = pyqtSignal(
-        str, dict
-    )  # controller_username, requested_permissions
-    # Emitted by AppController (slot connected to WM) to unblock QEventLoop in worker thread
-    _permission_dialog_completed_internally = pyqtSignal(dict)  # granted_permissions
+    ui_show_permission_dialog_requested = pyqtSignal(str, dict)
+    _permission_dialog_completed_internally = pyqtSignal(dict)
+
+    admin_users_fetched = pyqtSignal(list)
+    admin_logs_fetched = pyqtSignal(list)
+    admin_user_operation_complete = pyqtSignal(bool, str)
+    admin_log_operation_complete = pyqtSignal(bool, str)
 
 
 class AppController:
-    """
-    Coordinates UI ↔ Database ↔ ControllerClient/TargetClient.
-    Manages application state, role, and client connections.
-    """
+    ADMIN_USERNAME = "useradmin"
+    ADMIN_PASSWORD = "adminpassword"
 
     def __init__(self, window_manager):
-        # DEBUG: Print attributes of the received window_manager instance
-        print(
-            f"--- AppController __init__ STARTING --- WindowManager type: {type(window_manager)}"
-        )
-        print(
-            f"--- AppController __init__ --- WindowManager dir: {dir(window_manager)}"
-        )
         self.wm = window_manager
-        self.db = Database("relay.db")  # Local DB for user registration/auth simulation
+        self.db = Database("relay.db")
 
-        self.client = None  # Can be ControllerClient or TargetClient
+        self.client = None
         self.current_username: str | None = None
         self.current_user_id: int | None = None
-        self.current_role: str | None = None  # "controller" or "target"
+        self.current_role: str | None = None
 
         self.session_id: int | None = None
         self.peer_username: str | None = None
-        self.granted_permissions: dict = {}  # For controller role
-        self.target_screen_dimensions: tuple[int, int] | None = (
-            None  # For target role, cached screen dimensions
-        )
+        self.granted_permissions: dict = {}
+        self.target_screen_dimensions: tuple[int, int] | None = None
 
-        # For handling permission dialog cross-thread
         self._permission_dialog_result: dict = {}
         self._permission_dialog_event_loop: QEventLoop | None = None
-        # self.target_screen_dimensions duplicate removed, already defined above
 
         self.signals = AppSignals()
 
-        # Connect UI signals from WindowManager
         self.wm.login_requested.connect(self.handle_login)
         self.wm.registration_requested.connect(self.handle_registration)
         self.wm.logout_requested.connect(self.handle_logout)
 
-        # Connect internal signals to WindowManager or UI updates
         self.signals.login_success.connect(self.wm.show_main_window_for_role)
+        self.signals.admin_login_success.connect(self.wm.show_admin_window)
         self.signals.logout_complete.connect(self.wm.show_login_window)
-        self.signals.message_received.connect(
-            self.wm.display_chat_message
-        )  # WM will forward to current window
+        self.signals.message_received.connect(self.wm.display_chat_message)
         self.signals.chat_error.connect(self.wm.show_chat_error)
         self.signals.client_error.connect(self.wm.show_general_error)
         self.signals.connection_established.connect(self.wm.update_connection_status)
@@ -129,43 +102,28 @@ class AppController:
         self.signals.permissions_updated.connect(self.wm.update_controller_permissions)
         self.signals.frame_received.connect(self.wm.display_remote_frame)
 
-        # Cross-thread permission dialog handling
-        print(
-            f"--- AppController __init__ --- Attempting to connect to WM method: handle_show_permission_dialog_request"
-        )  # DEBUG
+        self.signals.admin_users_fetched.connect(self.wm.update_admin_user_list)
+        self.signals.admin_logs_fetched.connect(self.wm.update_admin_log_list)
+        self.signals.admin_user_operation_complete.connect(
+            self.wm.show_admin_user_op_status
+        )
+        self.signals.admin_log_operation_complete.connect(
+            self.wm.show_admin_log_op_status
+        )
+
         self.signals.ui_show_permission_dialog_requested.connect(
             self.wm.handle_show_permission_dialog_request
         )
-        print(
-            f"--- AppController __init__ --- Attempting to connect to WM signal: permission_dialog_response_ready"
-        )  # DEBUG
         if hasattr(self.wm, "permission_dialog_response_ready"):
             self.wm.permission_dialog_response_ready.connect(
                 self._receive_permission_dialog_result_from_wm
             )
-            print(
-                f"--- AppController __init__ --- Successfully connected to permission_dialog_response_ready"
-            )  # DEBUG
         else:
             logger.error(
                 "CRITICAL: WindowManager instance does not have 'permission_dialog_response_ready' signal!"
             )
-            print(
-                "CRITICAL: WindowManager instance does not have 'permission_dialog_response_ready' signal!"
-            )  # DEBUG
-
-        # The self.signals._permission_dialog_completed_internally was an alternative,
-        # we can remove its connection for now if _receive_permission_dialog_result_from_wm handles the loop.
-        # self.signals._permission_dialog_completed_internally.connect(self._unblock_permission_event_loop)
-
-        # Connect signals for UI actions to AppController methods
-        # These would be connected when the main window is shown, e.g.,
-        # self.wm.main_window.connect_to_target_signal.connect(self.request_connection_to_target)
-        # self.wm.main_window.send_chat_signal.connect(self.send_chat_message)
-        # etc. For now, these are placeholders as UI signal setup is complex.
 
     def run(self):
-        """Show the login window at startup."""
         self.wm.show_login_window()
 
     def handle_registration(self, username: str, password: str, confirm: str):
@@ -182,8 +140,6 @@ class AppController:
         if password != confirm:
             self.wm.show_registration_error("Passwords do not match.")
             return
-
-        # Using local DB for registration
         try:
             user_id = self.db.register_user(username, password)
         except Exception:
@@ -192,11 +148,9 @@ class AppController:
             )
             logger.exception("Internal DB error during registration")
             return
-
         if user_id is None:
             self.wm.show_registration_error("Username already exists.")
             return
-
         self.db.log(
             "INFO", "USER_REGISTERED", {"username": username, "user_id": user_id}
         )
@@ -221,17 +175,28 @@ class AppController:
         if not password:
             self.wm.show_login_error("Password is required.")
             return
+
+        if username == self.ADMIN_USERNAME and password == self.ADMIN_PASSWORD:
+            logger.info(f"Admin login successful for {username}.")
+            self.current_username = username
+            self.current_user_id = -1
+            self.current_role = "admin"
+            self.db.log("INFO", "ADMIN_LOGIN_SUCCESS", {"username": username})
+            self.signals.admin_login_success.emit(username)
+            self.wm.connect_admin_window_signals(self)
+            return
+
         if role not in ["controller", "target"]:
             self.wm.show_login_error("Invalid role selected.")
             return
 
         host, port = self._parse_backend_url(backend_url)
-        if host is None:  # Error already shown by _parse_backend_url via wm
+        if host is None:
             return
 
         try:
             logger.info(f"Connecting to Relay @ {host}:{port} as {role}")
-            if self.client:  # cleanup previous client if any
+            if self.client:
                 self.client.disconnect()
                 self.client = None
 
@@ -251,18 +216,24 @@ class AppController:
                 )
                 self.client.on_error(self._handle_client_error)
                 self.client.on_input_data(self._handle_input_data)
-            else:  # Should not happen due to earlier check
+                if PYNPUT_AVAILABLE:  # Initialize screen dimensions for target
+                    try:
+                        self.target_screen_dimensions = ImageGrab.grab().size
+                        logger.info(
+                            f"Target screen dimensions: {self.target_screen_dimensions}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Could not get screen dimensions: {e}")
+                        self.target_screen_dimensions = (1920, 1080)  # Fallback
+            else:
                 raise ValueError("Invalid role for client initialization")
 
-            self.current_username = (
-                self.client.username
-            )  # Server confirms username on AUTH_OK
+            self.current_username = self.client.username
             self.current_user_id = self.client.user_id
             self.current_role = role
 
-            # Local DB verify (simulation, server already did this)
             ok_local, user_id_local = self.db.verify_user(username, password)
-            if not ok_local:  # This is more of a sanity check for local simulation
+            if not ok_local:
                 logger.warning(
                     f"Local DB verify failed for {username}, though server auth succeeded."
                 )
@@ -279,9 +250,7 @@ class AppController:
             self.signals.login_success.emit(
                 self.current_username, self.current_user_id, self.current_role
             )
-            self.wm.connect_main_window_signals(
-                self
-            )  # Connect signals like send_chat, request_connection etc.
+            self.wm.connect_main_window_signals(self)
 
         except (ConnectionRefusedError, socket.timeout) as e:
             self.wm.show_login_error(
@@ -291,7 +260,7 @@ class AppController:
         except socket.gaierror:
             self.wm.show_login_error(f"Invalid server address '{host}'.")
             logger.error(f"Invalid server address: {host}")
-        except AssertionError as e:  # Auth failed from client
+        except AssertionError as e:
             self.wm.show_login_error(f"Authentication failed: {e}")
             logger.error(f"Auth failed for user '{username}': {e}")
         except Exception as e:
@@ -303,17 +272,15 @@ class AppController:
         port = None
         try:
             if "://" not in backend_url:
-                backend_url = "tcp://" + backend_url  # Add a scheme for urlparse
-
+                backend_url = "tcp://" + backend_url
             parsed = urlparse(backend_url)
             host = parsed.hostname
             port = parsed.port
-
             if not host:
                 self.wm.show_login_error("Invalid server address: Hostname missing.")
                 return None, None
             if not port:
-                port = 9009  # Default port
+                port = 9009
             if not (1 <= port <= 65535):
                 self.wm.show_login_error(
                     "Invalid port number. Must be between 1 and 65535."
@@ -331,7 +298,6 @@ class AppController:
                 self.client.disconnect()
             except Exception:
                 logger.exception("Error during client disconnect on logout")
-
         self.client = None
         self.current_username = None
         self.current_user_id = None
@@ -339,13 +305,12 @@ class AppController:
         self.session_id = None
         self.peer_username = None
         self.granted_permissions = {}
-
+        self.target_screen_dimensions = None  # Clear screen dimensions on logout
         self.signals.logout_complete.emit()
         self.db.log(
             "INFO", "USER_LOGOUT", {"username": self.current_username or "Unknown"}
         )
 
-    # --- Client Action Methods (called from UI via WindowManager connections) ---
     def request_connection_to_target(self, target_username: str):
         if self.current_role == "controller" and isinstance(
             self.client, ControllerClient
@@ -373,23 +338,19 @@ class AppController:
             )
 
     def send_chat_message(self, text: str, sender: str = None, timestamp: str = None):
-        """Send a chat message to the connected peer."""
         try:
             if not text:
                 return
-
             if not timestamp:
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-
-            if isinstance(self.client, ControllerClient):
-                self.client.send_chat(text, sender=sender, timestamp=timestamp)
-            else:  # TargetClient
-                self.client.send_chat(text, timestamp=timestamp)
-
-            # Emit signal for local display
-            self.signals.message_received.emit(
-                sender or self.client.username, text, timestamp
-            )
+            _sender = sender or self.client.username
+            if isinstance(self.client, (ControllerClient, TargetClient)):
+                self.client.send_chat(text, sender=_sender, timestamp=timestamp)
+            else:
+                logger.error("Cannot send chat, client not initialized properly.")
+                self.signals.chat_error.emit("Client not ready to send chat.")
+                return
+            self.signals.message_received.emit(_sender, text, timestamp)
         except Exception as e:
             logger.error("Exception sending chat", exc_info=True)
             self.signals.chat_error.emit(str(e))
@@ -427,7 +388,7 @@ class AppController:
         ):
             if self.granted_permissions.get("mouse") or self.granted_permissions.get(
                 "keyboard"
-            ):  # Basic check
+            ):
                 try:
                     self.client.send_input(input_data)
                 except ConnectionError as e:
@@ -436,10 +397,8 @@ class AppController:
                     logger.exception("Error sending input event")
                     self.signals.client_error.emit(0, f"Failed to send input: {e}")
             else:
-                # logger.debug("Attempted to send input without mouse/keyboard permission.")
-                pass  # Silently ignore or log verbosely
+                pass
         else:
-            # logger.debug("Send input called but not in valid controller state.")
             pass
 
     def send_frame_to_controller(self, frame_bytes: bytes):
@@ -451,48 +410,47 @@ class AppController:
             try:
                 self.client.send_frame_data(frame_bytes)
             except ConnectionError as e:
-                # This could be frequent, handle gracefully (e.g., stop streaming)
                 logger.error(f"ConnectionError sending frame data: {e}")
                 self._handle_client_error(
                     0, f"Connection lost while streaming: {e}", self.peer_username
                 )
             except Exception:
                 logger.exception("Error sending frame data")
-                # Potentially stop streaming or notify UI
         else:
-            # logger.debug("Send frame called but not in valid target state.")
             pass
 
-    # --- Client Callback Handlers ---
     def _handle_incoming_chat(self, sender: str, text: str, timestamp: str):
         logger.debug(f"Incoming chat from {sender}: {text} at {timestamp}")
-        # Avoid displaying self-sent messages if server echoes them (current server broadcasts, so this is needed)
         if sender != self.current_username:
             self.signals.message_received.emit(sender, text, timestamp)
-        # If server does NOT echo, and local display on send is desired, then
-        # this check is not needed, or a flag for "is_self" should be passed.
-        # Current client.send_chat does not locally display.
 
     def _handle_connect_info_controller(self, session_id: int, peer_username: str):
         self.session_id = session_id
-        self.peer_username = peer_username  # This is the target's username
+        self.peer_username = peer_username
         logger.info(
             f"Controller connected to target {peer_username} in session {session_id}"
         )
         self.signals.connection_established.emit(peer_username, session_id)
-        # Controller might want to automatically request initial permissions here
-        # self.request_target_permissions(view=True, mouse=False, keyboard=False)
 
     def _handle_connect_info_target(self, session_id: int, peer_username: str):
         self.session_id = session_id
-        self.peer_username = peer_username  # This is the controller's username
+        self.peer_username = peer_username
         logger.info(
             f"Target connected with controller {peer_username} in session {session_id}"
         )
+        # Initialize/update target screen dimensions when a controller connects
+        if PYNPUT_AVAILABLE:
+            try:
+                self.target_screen_dimensions = ImageGrab.grab().size
+                logger.info(
+                    f"Target screen dimensions updated: {self.target_screen_dimensions}"
+                )
+            except Exception as e:
+                logger.error(f"Could not update screen dimensions on connect: {e}")
+                # Keep previous or default if any
         self.signals.connection_established.emit(peer_username, session_id)
-        # Target UI might want to start streaming or show connected status
 
-    def _handle_permission_update(self, granted_permissions: dict):  # For Controller
+    def _handle_permission_update(self, granted_permissions: dict):
         self.granted_permissions = granted_permissions
         logger.info(
             f"Permissions updated for controller {self.current_username}: {granted_permissions}"
@@ -501,24 +459,18 @@ class AppController:
 
     def _handle_permission_request_from_controller(
         self, controller_username: str, requested_permissions: dict
-    ) -> dict:  # For Target
+    ) -> dict:
         logger.info(
             f"Target {self.current_username} received PERM_REQ from {controller_username}: {requested_permissions}"
         )
-        granted = {key: False for key in requested_permissions}  # Default to deny all
-
-        # Check if we are in the main GUI thread
-        # QApplication.instance() can be None if called too early or in non-GUI app.
-        # QCoreApplication.instance() is safer for just getting the app instance.
+        granted = {key: False for key in requested_permissions}
         app_instance = QCoreApplication.instance()
         if app_instance is None:
             logger.error(
                 "AppController: No QCoreApplication instance found! Cannot determine thread for permission dialog."
             )
-            return granted  # Deny all
-
+            return granted
         if app_instance.thread() == QThread.currentThread():
-            # Already in the main thread, can call a blocking dialog method directly
             logger.warning(
                 "_handle_permission_request_from_controller called from MAIN thread. Showing dialog directly."
             )
@@ -531,28 +483,21 @@ class AppController:
                     "WindowManager has no 'show_permission_dialog' method for main thread call."
                 )
         else:
-            # We are in a WORKER thread (e.g., TargetClient's reader thread)
             logger.info(
                 "AppController: Worker thread requesting permission dialog via signal."
             )
-            self._permission_dialog_result = granted  # Initialize with default
+            self._permission_dialog_result = granted
             self._permission_dialog_event_loop = QEventLoop()
-
-            # Ensure the connection for the result is made (should be done in __init__)
-            # For safety, one could check self.wm.permission_dialog_response_ready.receivers(self._receive_permission_dialog_result_from_wm) > 0
-
             self.signals.ui_show_permission_dialog_requested.emit(
                 controller_username, requested_permissions
             )
-
             logger.info("AppController: Event loop exec...")
             return_code = self._permission_dialog_event_loop.exec_()
             logger.info(
                 f"AppController: Event loop finished with code {return_code}. Result: {self._permission_dialog_result}"
             )
             granted = self._permission_dialog_result
-            self._permission_dialog_event_loop = None  # Clean up
-
+            self._permission_dialog_event_loop = None
         logger.info(
             f"Target {self.current_username} responding to PERM_REQ from {controller_username} with: {granted}"
         )
@@ -581,7 +526,6 @@ class AppController:
             f"Client error: code={code}, reason='{reason}', disconnected_peer='{peer_username_if_disconnect}'"
         )
         self.signals.client_error.emit(code, reason)
-
         if (
             code == 410
             and peer_username_if_disconnect
@@ -591,108 +535,107 @@ class AppController:
             self.signals.peer_disconnected.emit(self.peer_username)
             self.session_id = None
             self.peer_username = None
-            self.granted_permissions = {}  # Reset for controller
+            self.granted_permissions = {}
             self.signals.session_ended.emit()
-        elif code == 0:  # Client-side detected disconnection
+        elif code == 0:
             logger.info(
                 "Client-side detected disconnection. Resetting session state if applicable."
             )
-            if self.peer_username:  # If was in a session
+            if self.peer_username:
                 self.signals.peer_disconnected.emit(self.peer_username)
             self.session_id = None
             self.peer_username = None
             self.granted_permissions = {}
             self.signals.session_ended.emit()
-            # If not already on login screen, logout might be triggered by UI from session_ended.
 
-    def _handle_frame_data(self, frame_bytes: bytes):  # For Controller
-        # logger.debug(f"Controller received frame data: {len(frame_bytes)} bytes")
+    def _handle_frame_data(self, frame_bytes: bytes):
         if self.granted_permissions.get("view"):
             self.signals.frame_received.emit(frame_bytes)
         else:
-            # logger.debug("Frame data received but view permission not granted. Discarding.")
             pass
 
     def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> tuple:
-        """Helper to get pynput modifier keys if we want to press/release them explicitly."""
-        # This is complex because pynput handles modifiers by pressing/releasing them
-        # like normal keys (e.g., keyboard.press(keyboard.Key.shift), keyboard.press('a'),
-        # keyboard.release('a'), keyboard.release(keyboard.Key.shift)).
-        # The current approach sends the character ('A') or special key directly,
-        # relying on Qt's event.text() or event.key() to have already processed modifiers
-        # for character generation or special key identity.
-        # This function is a placeholder if a different strategy for modifiers is needed.
-        return ()  # Not used in current _handle_pynput_key_event
+        return ()
 
-    def _handle_input_data(self, input_event_data: dict):  # For Target
+    def _handle_input_data(self, input_event_data: dict):
         if not PYNPUT_AVAILABLE:
-            # logger.warning("Received input event, but pynput is not available. Cannot control host.")
+            logger.warning(
+                "Received input event, but pynput is not available. Cannot control host."
+            )
             return
 
         logger.debug(f"Target received input event: {input_event_data}")
-        mouse_controller = mouse.Controller()
-        keyboard_controller = keyboard.Controller()
-
         event_type = input_event_data.get("type")
-        screen_width, screen_height = None, None
 
-        if self.target_screen_dimensions:
-            screen_width, screen_height = self.target_screen_dimensions
-        else:
-            logger.error("Target screen dimensions not available/cached.")
-            # For events that require coordinates, we might skip them or use a default if absolutely necessary
-            # For now, let's allow pynput to handle clicks/scrolls at current mouse pos if coords are None.
+        # Ensure target_screen_dimensions is available for coordinate-based events
+        if event_type == "mousemove" and not self.target_screen_dimensions:
+            logger.error(
+                "Target screen dimensions not available for mousemove. Attempting to refresh."
+            )
+            try:
+                self.target_screen_dimensions = (
+                    ImageGrab.grab().size
+                )  # Try to get it now
+                logger.info(
+                    f"Refreshed target screen dimensions: {self.target_screen_dimensions}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to refresh screen dimensions: {e}. Skipping mousemove."
+                )
+                return  # Skip if still not available
+
+        screen_width, screen_height = (
+            self.target_screen_dimensions
+            if self.target_screen_dimensions
+            else (None, None)
+        )
 
         try:
+            mouse_controller = mouse.Controller()
+            keyboard_controller = keyboard.Controller()
+
             if event_type == "mousemove":
-                if not screen_width or not screen_height:
-                    logger.warning("Skipping mousemove: screen dimensions unavailable.")
+                if (
+                    not screen_width or not screen_height
+                ):  # Should have been caught above, but double check
+                    logger.warning(
+                        "Skipping mousemove: screen dimensions unavailable (final check)."
+                    )
                     return
                 norm_x = input_event_data.get("norm_x")
                 norm_y = input_event_data.get("norm_y")
                 if norm_x is not None and norm_y is not None:
                     target_x = int(norm_x * screen_width)
                     target_y = int(norm_y * screen_height)
-                    logger.debug(
-                        f"Target: Moving mouse to ({target_x}, {target_y}) based on norm ({norm_x}, {norm_y}) and screen ({screen_width}, {screen_height})"
-                    )
                     mouse_controller.position = (target_x, target_y)
                 else:
                     logger.warning(
                         "Skipping mousemove: normalized coordinates missing."
                     )
-
             elif event_type == "mousepress":
-                # For presses/releases/scrolls, pynput usually acts at the current mouse position
-                # if specific coordinates aren't provided to a move_and_press type function.
-                # Here, we assume the mouse was moved to position by a preceding 'mousemove'.
                 button_name = input_event_data.get("button")
                 pynput_button = getattr(mouse.Button, button_name, None)
                 if pynput_button:
                     mouse_controller.press(pynput_button)
-
+                else:
+                    logger.warning(f"Unknown mouse button for press: {button_name}")
             elif event_type == "mouserelease":
                 button_name = input_event_data.get("button")
                 pynput_button = getattr(mouse.Button, button_name, None)
                 if pynput_button:
                     mouse_controller.release(pynput_button)
-
+                else:
+                    logger.warning(f"Unknown mouse button for release: {button_name}")
             elif event_type == "wheel":
                 delta_x = input_event_data.get("delta_x", 0)
                 delta_y = input_event_data.get("delta_y", 0)
-                logger.debug(
-                    f"Target: Scrolling mouse wheel dx={delta_x}, dy={delta_y}"
-                )
                 mouse_controller.scroll(delta_x, delta_y)
-
             elif event_type == "keypress":
-                logger.debug(f"Target: Processing keypress: {input_event_data}")
                 self._handle_pynput_key_event(
                     keyboard_controller, input_event_data, press=True
                 )
-
             elif event_type == "keyrelease":
-                logger.debug(f"Target: Processing keyrelease: {input_event_data}")
                 self._handle_pynput_key_event(
                     keyboard_controller, input_event_data, press=False
                 )
@@ -700,32 +643,28 @@ class AppController:
                 logger.warning(
                     f"Target: Unknown input event type received: {event_type}"
                 )
-
-        except Exception as e:  # Catching potential errors from pynput or other logic
+        except Exception as e:
             logger.exception(
-                f"Error during pynput execution or input handling for event {input_event_data}: {e}"
+                f"Error during pynput execution for event {input_event_data}: {e}"
             )
+            # This exception could cause the target's reader thread to terminate.
+            # Depending on the severity, you might want to signal an error to the UI or attempt recovery.
+            # For now, just logging it. A disconnection might follow if this crashes the thread.
 
     def _map_qt_key_to_pynput(self, qt_key_code: int, text: str):
-        """
-        Maps Qt.Key (int) to pynput.keyboard.Key or character.
-        This is a simplified mapping and needs to be expanded for comprehensive coverage.
-        """
-        # Prioritize text if it's a simple character, as Qt.Key can be complex for these.
         if (
             text
             and len(text) == 1
             and text.isprintable()
             and not (Qt.Key_Shift <= qt_key_code <= Qt.Key_ScrollLock)
-        ):  # Avoid modifiers
+        ):
             return text
-
         key_map = {
             Qt.Key_Escape: keyboard.Key.esc,
             Qt.Key_Tab: keyboard.Key.tab,
             Qt.Key_Backspace: keyboard.Key.backspace,
             Qt.Key_Return: keyboard.Key.enter,
-            Qt.Key_Enter: keyboard.Key.enter,  # Qt often has both
+            Qt.Key_Enter: keyboard.Key.enter,
             Qt.Key_Insert: keyboard.Key.insert,
             Qt.Key_Delete: keyboard.Key.delete,
             Qt.Key_Home: keyboard.Key.home,
@@ -739,7 +678,7 @@ class AppController:
             Qt.Key_Shift: keyboard.Key.shift,
             Qt.Key_Control: keyboard.Key.ctrl,
             Qt.Key_Alt: keyboard.Key.alt,
-            Qt.Key_Meta: keyboard.Key.cmd,  # Meta is usually Cmd on Mac, Super/Windows key elsewhere
+            Qt.Key_Meta: keyboard.Key.cmd,
             Qt.Key_CapsLock: keyboard.Key.caps_lock,
             Qt.Key_NumLock: keyboard.Key.num_lock,
             Qt.Key_ScrollLock: keyboard.Key.scroll_lock,
@@ -755,40 +694,20 @@ class AppController:
             Qt.Key_F10: keyboard.Key.f10,
             Qt.Key_F11: keyboard.Key.f11,
             Qt.Key_F12: keyboard.Key.f12,
-            # TODO: Add more mappings (F13-F20, media keys, etc. if pynput supports them)
-            # For printable characters not caught by `text` (e.g. space if text is empty for space key)
             Qt.Key_Space: keyboard.Key.space,
         }
-
         pynput_key = key_map.get(qt_key_code)
         if pynput_key:
             return pynput_key
-
-        # If no special key matched, and text is available (even for non-printables like space if not caught above)
-        # This part might need refinement depending on how `event.text()` behaves for all keys.
-        # If text is primary, it should have been caught at the start.
-        # This is more a fallback if qt_key_code doesn't map to a special pynput.Key
-        # and `text` might contain something (e.g., from numpad).
-        # Generally, pynput handles char keys by passing the char itself.
-        if text:  # and not pynput_key
-            return text  # Pass the character itself
-
+        if text:
+            return text
         logger.warning(f"Unmapped Qt key code: {qt_key_code}, text: '{text}'")
         return None
 
     def _handle_pynput_key_event(self, kb_controller, event_data: dict, press: bool):
         qt_key_code = event_data.get("key_code")
         text = event_data.get("text", "")
-        # Modifiers from event_data are currently not directly used to simulate holding them
-        # pynput handles modifier keys (shift, ctrl, alt) as separate key presses/releases.
-        # If 'A' is sent, pynput presses 'a', then releases 'a'.
-        # If 'shift' then 'a' is sent, pynput presses shift, presses 'a', releases 'a', releases shift.
-        # The current ControllerWindow sends modifiers as part of the event,
-        # but for pynput, we primarily care about the key itself.
-        # The `text` field from Qt event already considers Shift for casing, e.g. Shift+a -> text='A'.
-
         pynput_key_obj = self._map_qt_key_to_pynput(qt_key_code, text)
-
         if pynput_key_obj:
             try:
                 if press:
@@ -796,7 +715,6 @@ class AppController:
                 else:
                     kb_controller.release(pynput_key_obj)
             except Exception as e:
-                # pynput can raise errors for certain key combinations or unsupported keys
                 logger.error(
                     f"pynput error for key {pynput_key_obj} (action: {'press' if press else 'release'}): {e}"
                 )
@@ -805,20 +723,103 @@ class AppController:
                 f"No pynput mapping for Qt key code {qt_key_code} / text '{text}'"
             )
 
-    # --- Role switching ---
     def switch_role(self, new_role: str):
         if self.current_role == new_role:
             logger.info(f"Already in role: {new_role}")
             return
-
         logger.info(f"Switching role from {self.current_role} to {new_role}")
-        # Perform a full logout to ensure clean state before "re-logining" with new role
         self.handle_logout()
-        # The UI (WindowManager) should then probably re-trigger the login flow,
-        # allowing the user to log in with the new role selected.
-        # Or, if user credentials are to be reused:
-        # self.wm.show_login_window(prefill_username=self.last_username, default_role=new_role)
-        # For now, logout is sufficient, user re-initiates login.
-        self.signals.role_changed.emit(
-            new_role
-        )  # UI might use this to update login screen default
+        self.signals.role_changed.emit(new_role)
+
+    def admin_fetch_users(self):
+        if self.current_role == "admin":
+            users = self.db.list_users()
+            self.signals.admin_users_fetched.emit(users)
+        else:
+            logger.warning("Non-admin tried to fetch users.")
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_add_user(self, username: str, password: str, role: str):
+        if self.current_role == "admin":
+            if not username or not password:
+                self.signals.admin_user_operation_complete.emit(
+                    False, "Username and password are required."
+                )
+                return
+            user_id = self.db.register_user(username, password)
+            if user_id:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User {username} (ID: {user_id}) added."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False, f"Failed to add user {username}. Username might exist."
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_edit_user(
+        self,
+        user_id: int,
+        new_username: Optional[str] = None,
+        new_password: Optional[str] = None,
+    ):
+        if self.current_role == "admin":
+            if not new_username and not new_password:
+                self.signals.admin_user_operation_complete.emit(
+                    False, "No changes specified for user."
+                )
+                return
+            success = self.db.update_user_details(user_id, new_username, new_password)
+            if success:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User ID {user_id} updated."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False,
+                    f"Failed to update user ID {user_id}. Username might conflict.",
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_delete_user(self, user_id: int):
+        if self.current_role == "admin":
+            if (
+                user_id == self.current_user_id
+                and self.current_username == self.ADMIN_USERNAME
+            ):
+                self.signals.admin_user_operation_complete.emit(
+                    False, "Cannot delete the active admin user."
+                )
+                return
+            success = self.db.delete_user(user_id)
+            if success:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User ID {user_id} deleted."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False,
+                    f"Failed to delete user ID {user_id}. User might be in active sessions or have logs.",
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_fetch_logs(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        level: Optional[str] = None,
+        event: Optional[str] = None,
+        user: Optional[str] = None,
+    ):
+        if self.current_role == "admin":
+            logs = self.db.get_logs(limit, offset, level, event, user)
+            self.signals.admin_logs_fetched.emit(logs)
+        else:
+            logger.warning("Non-admin tried to fetch logs.")
+            self.signals.admin_log_operation_complete.emit(False, "Permission denied.")
