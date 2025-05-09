@@ -377,17 +377,19 @@ class AppController:
         try:
             if not text:
                 return
-            
+
             if not timestamp:
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-            
+
             if isinstance(self.client, ControllerClient):
                 self.client.send_chat(text, sender=sender, timestamp=timestamp)
             else:  # TargetClient
                 self.client.send_chat(text, timestamp=timestamp)
-            
+
             # Emit signal for local display
-            self.signals.message_received.emit(sender or self.client.username, text, timestamp)
+            self.signals.message_received.emit(
+                sender or self.client.username, text, timestamp
+            )
         except Exception as e:
             logger.error("Exception sending chat", exc_info=True)
             self.signals.chat_error.emit(str(e))

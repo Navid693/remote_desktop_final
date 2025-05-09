@@ -223,12 +223,19 @@ class RelayHandler(StreamRequestHandler):
 
         with self.server.lock:
             # اگر target_identifier یک عدد باشد، به عنوان user_id در نظر گرفته می‌شود
-            if isinstance(target_identifier, (int, str)) and str(target_identifier).isdigit():
+            if (
+                isinstance(target_identifier, (int, str))
+                and str(target_identifier).isdigit()
+            ):
                 # جستجو بر اساس user_id
                 target_info = next(
-                    (client for client in self.server.active_clients.values() 
-                     if client.user_id == int(target_identifier) and client.role == ROLE_TARGET),
-                    None
+                    (
+                        client
+                        for client in self.server.active_clients.values()
+                        if client.user_id == int(target_identifier)
+                        and client.role == ROLE_TARGET
+                    ),
+                    None,
                 )
             else:
                 # جستجو بر اساس نام کاربری
@@ -480,7 +487,6 @@ class RelayHandler(StreamRequestHandler):
 
         if controller_info and controller_info.granted_permissions.get("view"):
             try:
-
                 from shared.protocol import (
                     send_bytes as send_raw_bytes,  # Explicit import if needed
                 )

@@ -12,13 +12,13 @@ import time
 
 from PIL import ImageGrab  # Added for screen capture
 from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal  # Added QBuffer, QIODevice
+from PyQt5.QtGui import QIcon  # Added for icons
 from PyQt5.QtGui import (  # Added event types and drawing tools
     QImage,
     QKeyEvent,
     QMouseEvent,
     QPixmap,
     QWheelEvent,
-    QIcon,  # Added for icons
 )
 from PyQt5.QtWidgets import (
     QApplication,
@@ -133,13 +133,13 @@ class ControllerWindow(QMainWindow):
         """Connect all signal handlers."""
         # Connect screen recording button
         self.screen_record_btn.clicked.connect(self._toggle_screen_recording)
-        
+
         # Connect screenshot button
         self.screenshot_btn.clicked.connect(self._take_screenshot)
-        
+
         # Connect log button
         self.log_btn.clicked.connect(self._show_logs)
-        
+
         # Connect menu button
         self.menu_btn.clicked.connect(self._show_menu)
 
@@ -147,7 +147,9 @@ class ControllerWindow(QMainWindow):
         """Toggle screen recording state."""
         self.is_recording = not self.is_recording
         if self.is_recording:
-            self.screen_record_btn.setIcon(QIcon("assets/icons/screen-recorder (1).png"))
+            self.screen_record_btn.setIcon(
+                QIcon("assets/icons/screen-recorder (1).png")
+            )
             self.screen_record_btn.setToolTip("Stop Recording")
             # TODO: Implement actual recording start
             log.info("Screen recording started")
@@ -184,7 +186,8 @@ class ControllerWindow(QMainWindow):
         self.toolbar.setObjectName("main_toolbar")
         self.toolbar.setMovable(False)
         self.toolbar.setIconSize(QSize(24, 24))  # Slightly larger icons
-        self.toolbar.setStyleSheet("""
+        self.toolbar.setStyleSheet(
+            """
             QToolBar {
                 spacing: 10px;
                 padding: 5px;
@@ -192,7 +195,8 @@ class ControllerWindow(QMainWindow):
             QToolButton {
                 padding: 5px;
             }
-        """)
+        """
+        )
 
         # Left side of Toolbar (User & Session Info)
         self.role_label = QLabel(f"Role: {self.role.title()}")
@@ -201,21 +205,25 @@ class ControllerWindow(QMainWindow):
         self.toolbar.addWidget(self.uid_label)
 
         self.toolbar.addSeparator()
-        
+
         # Connection status with icon
         status_widget = QWidget()
         status_layout = QHBoxLayout(status_widget)
         status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(4)
-        
+
         self.connection_icon = QLabel()
-        self.connection_icon.setPixmap(QPixmap("assets/icons/broken-link.png").scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.connection_icon.setPixmap(
+            QPixmap("assets/icons/broken-link.png").scaled(
+                16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+        )
         status_layout.addWidget(self.connection_icon)
-        
+
         self.peer_status_label = QLabel("Status: Not Connected")
         status_layout.addWidget(self.peer_status_label)
         self.toolbar.addWidget(status_widget)
-        
+
         self.session_id_label = QLabel("")
         self.toolbar.addWidget(self.session_id_label)
 
@@ -507,7 +515,9 @@ class ControllerWindow(QMainWindow):
             if not target_identifier:
                 self.show_message("Target UID/Username cannot be empty.", "Input Error")
                 return
-            log.info(f"ControllerWindow._on_connect_request: Read Target identifier from input: '{target_identifier}'")
+            log.info(
+                f"ControllerWindow._on_connect_request: Read Target identifier from input: '{target_identifier}'"
+            )
             self.connect_requested.emit(target_identifier)
 
     def _on_send_chat(self):

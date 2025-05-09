@@ -77,18 +77,18 @@ class ControllerClient:
         """
         if not self.sock:
             raise ConnectionError("Not connected")
-            
+
         # Try to convert to int if it's a numeric string (UID)
         try:
             if target_identifier.isdigit():
                 target_identifier = int(target_identifier)
         except (ValueError, AttributeError):
             pass  # Keep as string if not convertible to int
-            
+
         send_json(
-            self.sock, 
-            PacketType.CONNECT_REQUEST, 
-            {"target_identifier": target_identifier}
+            self.sock,
+            PacketType.CONNECT_REQUEST,
+            {"target_identifier": target_identifier},
         )
 
     def request_permission(

@@ -50,7 +50,8 @@ class RegistrationWindow(QWidget):
         self.theme_btn = QPushButton("🌙")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setFlat(True)
-        self.theme_btn.setStyleSheet("""
+        self.theme_btn.setStyleSheet(
+            """
             QPushButton { 
                 font-size: 24px; 
                 padding: 5px;
@@ -61,7 +62,8 @@ class RegistrationWindow(QWidget):
                 background: rgba(0, 0, 0, 0.1);
                 border-radius: 4px;
             }
-        """)
+        """
+        )
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
         top.addWidget(self.theme_btn)
         self._update_theme_icon("dark")  # Set default icon
@@ -76,7 +78,9 @@ class RegistrationWindow(QWidget):
         pm = QPixmap("assets/icons/logo.png")
         if not pm.isNull():
             logo.setPixmap(
-                pm.scaled(160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # Larger logo
+                pm.scaled(
+                    160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )  # Larger logo
             )
         body.addWidget(logo)
 

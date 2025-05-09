@@ -490,7 +490,7 @@ class WindowManager(QObject):
         msg_box.setText("Are you sure you want to log out?")
         msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         msg_box.setDefaultButton(QMessageBox.No)
-        
+
         if msg_box.exec_() == QMessageBox.Yes:
             self._logger.info("User confirmed logout")
             self.logout_requested.emit()
