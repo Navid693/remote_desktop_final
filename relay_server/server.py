@@ -445,7 +445,7 @@ class RelayHandler(StreamRequestHandler):
         # Log and store chat message in DB
         db.add_chat_msg(
             self.client_info.session_id, self.client_info.user_id, text
-        )  # Storing with user_id
+        )
         logger.info(
             f"[CHAT] Session {self.client_info.session_id} | {sender_username}: {text}"
         )
@@ -455,17 +455,29 @@ class RelayHandler(StreamRequestHandler):
             peer_info = self.server.active_clients.get(self.client_info.peer_username)
 
         if peer_info and peer_info.session_id == self.client_info.session_id:
-            chat_payload = {
-                "text": text,
-                "timestamp": timestamp,
-                "sender": sender_username,
-            }
-            send_json(peer_info.sock, PacketType.CHAT, chat_payload)
+            try:
+                chat_payload = {
+                    "text": text,
+                    "timestamp": timestamp,
+                    "sender": sender_username,
+                }
+                send_json(peer_info.sock, PacketType.CHAT, chat_payload)
+            except Exception as e:
+                logger.error(f"Failed to deliver chat message to {peer_info.username}: {e}")
+                send_json(
+                    self.request,
+                    PacketType.ERROR,
+                    {"code": 500, "reason": "Failed to deliver message to peer"},
+                )
         else:
             logger.warning(
                 f"[CHAT_FAIL] Peer {self.client_info.peer_username} not found or not in same session for chat from {sender_username}."
             )
-            # Optionally notify sender that peer is disconnected.
+            send_json(
+                self.request,
+                PacketType.ERROR,
+                {"code": 404, "reason": "Peer not found or not in same session"},
+            )
 
     def _handle_packet_frame(self, data: bytes):
         """Handles FRAME data from target, forwards to controller."""

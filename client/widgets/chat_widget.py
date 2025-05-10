@@ -7,7 +7,7 @@ Supports dark/light themes, RTL/LTR alignment, dynamic theme switching, and Pers
 
 import re
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFontDatabase
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -81,11 +81,26 @@ class ChatAreaWidget(QScrollArea):
         self.layout = QVBoxLayout(self.container)
         self.layout.addStretch()
         self.setWidget(self.container)
-
+        
+        # تایمر برای اسکرول با تاخیر که مطمئن شویم همه چیز رندر شده
+        self.scroll_timer = QTimer(self)
+        self.scroll_timer.setSingleShot(True)
+        self.scroll_timer.timeout.connect(self._do_scroll)
+        
     def append_message(self, sender, message, timestamp, is_self):
         bubble = ChatBubble(sender, message, timestamp, is_self, self.theme)
         self.layout.insertWidget(self.layout.count() - 1, bubble)
-        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+        # به جای اسکرول مستقیم، تایمر را شروع می‌کنیم
+        self.scroll_timer.start(50)  # 50ms تاخیر
+        
+    def _do_scroll(self):
+        """اسکرول به آخرین پیام با تضمین اینکه محتوا کاملا رندر شده"""
+        scrollbar = self.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+        
+        # اطمینان از اینکه اسکرول انجام شده
+        if scrollbar.value() != scrollbar.maximum():
+            scrollbar.setValue(scrollbar.maximum())
 
     def update_theme(self, new_theme):
         self.theme = new_theme
@@ -94,3 +109,5 @@ class ChatAreaWidget(QScrollArea):
             if hasattr(bubble, "theme"):
                 bubble.theme = new_theme
                 bubble._build_ui()
+        # اطمینان از حفظ اسکرول بعد از تغییر تم
+        self.scroll_timer.start(50)

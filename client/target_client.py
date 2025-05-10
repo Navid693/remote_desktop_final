@@ -73,22 +73,29 @@ class TargetClient:
             raise
 
     # --- API ---
-    def send_chat(self, text: str, timestamp: str = None) -> None:
+    def send_chat(self, text: str, sender: str = None, timestamp: str = None) -> None:
         if not self.sock:
             raise ConnectionError("Not connected")
         if not timestamp:
-            timestamp = (
-                datetime.datetime.now().isoformat()
-            )  # Use ISO format for consistency
-        send_json(
-            self.sock,
-            PacketType.CHAT,
-            {
-                "text": text,
-                "timestamp": timestamp,
-                "sender": self.username,
-            },  # Sender is self
-        )
+            timestamp = datetime.datetime.now().isoformat()
+        if not sender:
+            sender = self.username
+            
+        try:
+            send_json(
+                self.sock,
+                PacketType.CHAT,
+                {
+                    "text": text,
+                    "timestamp": timestamp,
+                    "sender": sender,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error sending chat message: {e}")
+            if self._error_callback:
+                self._error_callback(0, f"Failed to send message: {str(e)}", None)
+            raise ConnectionError(f"Failed to send chat message: {str(e)}")
 
     def on_chat(self, callback: Callable[[str, str, str], None]):
         """Register callback for incoming chat messages: callback(sender, text, timestamp)"""
@@ -284,7 +291,7 @@ class TargetClient:
         """Cleanly disconnect from the server."""
         logger.info(f"Client {self.username} disconnect method called.")
         current_sock = self.sock
-        if current_sock:
+        if (current_sock):
             self.sock = None
             try:
                 send_json(current_sock, PacketType.DISCONNECT, {})
