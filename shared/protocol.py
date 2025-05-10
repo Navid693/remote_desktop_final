@@ -78,12 +78,6 @@ class PacketType(IntEnum):
 HEADER_STRUCT = struct.Struct("!I")  # 4-byte length prefix
 MAX_PACKET_SIZE = 100 * 1024 * 1024  # 100 MB max packet
 
-# Optimized image settings for maximum quality
-IMAGE_OPTS = {
-    "format": "PNG",  # Use PNG for lossless quality
-    "optimize": True,  # Enable optimization
-}
-
 
 def send_json(sock: socket.socket, ptype: PacketType, data: Dict[str, Any]) -> None:
     """Send JSON message with packet type.
@@ -162,45 +156,55 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
         scale: Output scale percentage (default 100 = no scaling)
 
     Returns:
-        Compressed image bytes
+        Compressed image bytes (JPEG format, zlib compressed)
     """
-    # Process image in native resolution
     if img.mode != "RGB":
         img = img.convert("RGB")
 
-    # Apply sharpening and contrast enhancement
-    img = ImageOps.autocontrast(img, cutoff=0)
-    
-    # Scale if needed (maintain aspect ratio)
+    img = ImageOps.autocontrast(img, cutoff=0) # Apply basic contrast enhancement
+
     if scale != 100:
         w, h = img.size
-        new_w = max(1, int(w * scale / 100))
-        new_h = max(1, int(h * scale / 100))
-        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        new_w = max(1, int(w * (scale / 100.0)))
+        new_h = max(1, int(h * (scale / 100.0)))
+        try:
+            # LANCZOS is high quality but can be slower. For performance, consider BILINEAR or BICUBIC.
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        except AttributeError: # Older Pillow versions might use Image.LANCZOS
+            img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    # Save with optimal settings
+
     buf = io.BytesIO()
-    try:
-        # Try PNG first for best quality
-        img.save(buf, **IMAGE_OPTS)
-        data = buf.getvalue()
-        
-        # If PNG is too large, fall back to high-quality JPEG
-        if len(data) > MAX_PACKET_SIZE:
-            buf.seek(0)
-            buf.truncate()
-            img.save(buf, format='JPEG', quality=quality, optimize=True, subsampling=0)
-            data = buf.getvalue()
-            
-    except Exception as e:
-        logger.warning(f"Image save failed with {str(e)}, falling back to JPEG")
-        buf.seek(0)
-        buf.truncate()
-        img.save(buf, format='JPEG', quality=quality, optimize=True, subsampling=0)
-        data = buf.getvalue()
+    jpeg_options = {
+        "format": "JPEG",
+        "quality": quality,
+        "optimize": True,
+    }
+    # Use subsampling=0 (4:4:4, no chroma subsampling) for very high quality,
+    # otherwise let Pillow use defaults (often 4:2:0 or 4:2:2) for better compression.
+    if quality >= 95:
+        jpeg_options["subsampling"] = 0
     
-    # Use light compression to maintain quality
-    return zlib.compress(data, level=1)
+    try:
+        img.save(buf, **jpeg_options)
+    except Exception as e:
+        logger.error(f"Failed to save image as JPEG: {e}")
+        # Fallback or re-raise, depending on how critical this is.
+        # For now, let's re-raise if we can't encode.
+        raise IOError(f"JPEG encoding failed: {e}") from e
+        
+    data = buf.getvalue()
+    
+    # zlib compression, level 1 for speed.
+    # Higher levels (e.g., 6) offer better compression but are slower.
+    compressed_data = zlib.compress(data, level=1)
+
+    if len(compressed_data) > MAX_PACKET_SIZE: # Check final compressed size
+        logger.warning(f"Encoded image ({len(compressed_data)} bytes) exceeds MAX_PACKET_SIZE ({MAX_PACKET_SIZE} bytes). Consider reducing quality/scale.")
+        # Depending on policy, could raise ValueError or try to further reduce quality/send placeholder
+        # For now, just log a warning. The send_bytes/send_json will raise ValueError if it's still too large.
+
+    return compressed_data
 
 
 def decode_image(data: bytes) -> Image.Image:

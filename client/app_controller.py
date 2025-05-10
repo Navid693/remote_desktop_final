@@ -5,7 +5,15 @@ import logging
 import socket
 from typing import Optional
 from urllib.parse import urlparse
-from win32api import GetSystemMetrics  # Added for screen dimensions
+
+try:
+    from win32api import GetSystemMetrics
+    WINDOWS_SPECIFIC_APIS_AVAILABLE = True
+except ImportError:
+    GetSystemMetrics = None # type: ignore
+    WINDOWS_SPECIFIC_APIS_AVAILABLE = False
+    logging.warning("win32api not found. Screen dimension detection via GetSystemMetrics will be unavailable.")
+
 
 from PyQt5.QtCore import (
     QCoreApplication,
@@ -182,7 +190,8 @@ class AppController:
             self.current_username = username
             self.current_user_id = -1
             self.current_role = "admin"
-            self.db.log("INFO", "ADMIN_LOGIN_SUCCESS", {"username": username})
+            self.db.log("INFO", "ADMIN_LOGIN_SUCCESS", {"username": username, "user_id": -1, "role": "admin"})
+            logger.info(f"Admin user '{username}' logged in successfully.")
             self.signals.admin_login_success.emit(username)
             self.wm.connect_admin_window_signals(self)
             return
@@ -219,12 +228,19 @@ class AppController:
                 self.client.on_input_data(self._handle_input_data)
                 if PYNPUT_AVAILABLE:  # Initialize screen dimensions for target
                     try:
-                        self.target_screen_dimensions = ImageGrab.grab().size
-                        logger.info(
-                            f"Target screen dimensions: {self.target_screen_dimensions}"
-                        )
+                        # Try to get screen dimensions using Pillow, which is cross-platform
+                        # but might not work on all headless systems or specific configurations.
+                        grab = ImageGrab.grab()
+                        if grab:
+                            self.target_screen_dimensions = grab.size
+                            logger.info(
+                                f"Target screen dimensions via Pillow: {self.target_screen_dimensions}"
+                            )
+                        else:
+                            logger.warning("Pillow ImageGrab.grab() returned None. Using fallback dimensions.")
+                            self.target_screen_dimensions = (1920, 1080)  # Fallback
                     except Exception as e:
-                        logger.error(f"Could not get screen dimensions: {e}")
+                        logger.error(f"Could not get screen dimensions via Pillow: {e}. Using fallback dimensions.")
                         self.target_screen_dimensions = (1920, 1080)  # Fallback
             else:
                 raise ValueError("Invalid role for client initialization")
@@ -245,7 +261,7 @@ class AppController:
                 {"username": username, "user_id": self.current_user_id, "role": role},
             )
             logger.info(
-                f"Login successful for {username} (id={self.current_user_id}) as {role}"
+                f"User '{username}' (ID: {self.current_user_id}) logged in successfully as {role}."
             )
 
             self.signals.login_success.emit(
@@ -265,7 +281,7 @@ class AppController:
             self.wm.show_login_error(f"Authentication failed: {e}")
             logger.error(f"Auth failed for user '{username}': {e}")
         except Exception as e:
-            logger.exception("Network or other error during login/connection")
+            logger.exception(f"Network or other error during login for user '{username}' as '{role}'")
             self.wm.show_login_error(f"An unexpected error occurred: {e}")
 
     def _parse_backend_url(self, backend_url: str) -> tuple[str | None, int | None]:
@@ -293,12 +309,19 @@ class AppController:
             return None, None
 
     def handle_logout(self):
-        logger.info(f"Logout requested for user {self.current_username}")
+        logged_out_username = self.current_username
+        logged_out_user_id = self.current_user_id
+        logged_out_role = self.current_role
+
+        logger.info(f"Logout process started for user '{logged_out_username}' (ID: {logged_out_user_id}, Role: {logged_out_role}).")
+
         if self.client:
             try:
+                logger.info(f"Disconnecting client for user '{logged_out_username}'.")
                 self.client.disconnect()
             except Exception:
-                logger.exception("Error during client disconnect on logout")
+                logger.exception(f"Error during client disconnect on logout for '{logged_out_username}'.")
+        
         self.client = None
         self.current_username = None
         self.current_user_id = None
@@ -306,11 +329,18 @@ class AppController:
         self.session_id = None
         self.peer_username = None
         self.granted_permissions = {}
-        self.target_screen_dimensions = None  # Clear screen dimensions on logout
+        self.target_screen_dimensions = None
+
+        if logged_out_username: # Only log if a user was actually logged in
+            self.db.log(
+                "INFO", "USER_LOGOUT", {"username": logged_out_username, "user_id": logged_out_user_id, "role": logged_out_role}
+            )
+            logger.info(f"User '{logged_out_username}' logged out successfully.")
+        else:
+            logger.info("Logout called but no user was actively logged in.")
+
         self.signals.logout_complete.emit()
-        self.db.log(
-            "INFO", "USER_LOGOUT", {"username": self.current_username or "Unknown"}
-        )
+        logger.info("Logout process completed, 'logout_complete' signal emitted.")
 
     def request_connection_to_target(self, target_username: str):
         if self.current_role == "controller" and isinstance(
@@ -440,15 +470,29 @@ class AppController:
     def _handle_connect_info_target(self, session_id: int, peer_username: str):
         self.session_id = session_id
         self.peer_username = peer_username
+        screen_width, screen_height = 1920, 1080 # Default/fallback
 
         # Save actual monitor dimensions for accurate mouse mapping
-        screen_width = GetSystemMetrics(0)  
-        screen_height = GetSystemMetrics(1)
-        self.target_screen_dimensions = (screen_width, screen_height)
+        if GetSystemMetrics: # Check if win32api was imported
+            try:
+                screen_width = GetSystemMetrics(0)
+                screen_height = GetSystemMetrics(1)
+                self.target_screen_dimensions = (screen_width, screen_height)
+                logger.info(f"Target screen dimensions (via GetSystemMetrics): {screen_width}x{screen_height}")
+            except Exception as e:
+                logger.warning(f"Failed to get screen dimensions via GetSystemMetrics: {e}. Using fallback {screen_width}x{screen_height}.")
+                self.target_screen_dimensions = (screen_width, screen_height)
+        elif self.target_screen_dimensions: # Use dimensions from Pillow if available
+             screen_width, screen_height = self.target_screen_dimensions
+             logger.info(f"Using Pillow-derived screen dimensions: {screen_width}x{screen_height}")
+        else: # Absolute fallback
+            self.target_screen_dimensions = (screen_width, screen_height)
+            logger.warning(f"Using fallback screen dimensions: {screen_width}x{screen_height} for target.")
+
 
         logger.info(
             f"Target connected with controller {peer_username} in session {session_id} "
-            f"(Screen: {screen_width}x{screen_height})"
+            f"(Effective Screen: {screen_width}x{screen_height})"
         )
         self.signals.connection_established.emit(peer_username, session_id)
 
@@ -592,16 +636,28 @@ class AppController:
                 self._keyboard_controller = keyboard.Controller()
 
             # Get screen dimensions for proper mouse positioning
-            screen_width, screen_height = self.target_screen_dimensions or (None, None)
-            if not all((screen_width, screen_height)):
+            screen_width, screen_height = 1920, 1080 # Default/fallback
+
+            if self.target_screen_dimensions:
+                screen_width, screen_height = self.target_screen_dimensions
+            elif GetSystemMetrics: # Check if win32api was imported
                 try:
-                    screen_width = GetSystemMetrics(0)
-                    screen_height = GetSystemMetrics(1)
-                    self.target_screen_dimensions = (screen_width, screen_height)
-                    logger.info(f"Updated screen dimensions: {screen_width}x{screen_height}")
+                    screen_width_gs = GetSystemMetrics(0)
+                    screen_height_gs = GetSystemMetrics(1)
+                    if screen_width_gs > 0 and screen_height_gs > 0:
+                        screen_width, screen_height = screen_width_gs, screen_height_gs
+                        self.target_screen_dimensions = (screen_width, screen_height)
+                        logger.info(f"Updated screen dimensions via GetSystemMetrics for input handling: {screen_width}x{screen_height}")
+                    else:
+                         logger.warning(f"GetSystemMetrics returned invalid dimensions ({screen_width_gs}x{screen_height_gs}). Using fallback.")
+                         self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
                 except Exception as e:
-                    logger.error(f"Failed to get screen dimensions: {e}")
-                    return
+                    logger.error(f"Failed to get screen dimensions via GetSystemMetrics during input handling: {e}. Using fallback.")
+                    self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
+            else:
+                logger.warning(f"Using fallback screen dimensions for input handling: {screen_width}x{screen_height}")
+                self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
+
 
             # Handle mouse events
             if event_type == "mousemove":

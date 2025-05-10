@@ -1,6 +1,4 @@
-PyQt5==5.15.9
-pytest==7.4.2
-python-dotenv==1.0.0
-pywin32==306  # For accurate screen capture with cursor
-Pillow==10.0.0  # For image processing
-pynput==1.7.6  # For input control
+PyQt5==5.15.11
+Pillow==11.2.1
+pynput==1.8.1
+pywin32==306; sys_platform == 'win32'

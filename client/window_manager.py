@@ -117,7 +117,9 @@ class WindowManager(QObject):
             self.registration_requested.emit
         )
         self.register_window.toggle_theme_signal.connect(self.toggle_theme)
-        self.register_window.back_to_login_signal.connect(self.show_login_window)  # Updated signal name
+        self.register_window.back_to_login_signal.connect(
+            self.show_login_window
+        )  # Updated signal name
 
         # Apply initial theme
         app = QApplication.instance()
@@ -201,19 +203,45 @@ class WindowManager(QObject):
 
         self._logger.info(f"Theme switched to {next_theme}")
 
-    def show_login_window(self):
-        self._logger.info("Displaying login window")
+    def show_login_window(self, from_logout: bool = False):
+        self._logger.info("Transitioning to login window.")
+
         if self.main_controller_window:
+            self._logger.debug("Closing main controller window.")
+            # Prevent re-triggering logout signal if already in logout flow
+            if hasattr(self.main_controller_window, "logout_signal"):
+                try:
+                    self.main_controller_window.logout_signal.disconnect(
+                        self._confirm_logout
+                    )
+                except TypeError:  # Signal not connected
+                    pass
             self.main_controller_window.close()
             self.main_controller_window = None
-        if self.register_window:
-            self.register_window.hide()
-        if self.admin_window:  # Close admin window if open
+
+        if self.admin_window:
+            self._logger.debug("Closing admin window.")
+            if hasattr(self.admin_window, "logout_signal"):
+                try:
+                    self.admin_window.logout_signal.disconnect(self._confirm_logout)
+                except TypeError:  # Signal not connected
+                    pass
             self.admin_window.close()
             self.admin_window = None
+
+        if self.register_window and self.register_window.isVisible():
+            self._logger.debug("Hiding registration window.")
+            self.register_window.hide()
+
+        self._logger.debug("Showing login window.")
         self.login_window.show()
         self.login_window.activateWindow()
         self.login_window.raise_()
+
+        if from_logout:
+            self.show_message(
+                "You have been successfully logged out.", "Logout Successful"
+            )
 
     def show_registration_window(self):
         self._logger.info("Displaying registration window")
@@ -229,19 +257,41 @@ class WindowManager(QObject):
 
     def show_main_window_for_role(self, username: str, user_id: int, role: str):
         self._logger.info(
-            f"Showing main window for user {username} (ID: {user_id}) as {role}"
+            f"Transitioning to main window for user '{username}' (ID: {user_id}) as role '{role}'."
         )
-        if self.login_window:
+        if self.login_window and self.login_window.isVisible():
+            self._logger.debug("Hiding login window.")
             self.login_window.hide()
-        if self.register_window:
+        if self.register_window and self.register_window.isVisible():
+            self._logger.debug("Hiding registration window.")
             self.register_window.hide()
-        if self.admin_window:  # Close admin window if it was open
+        if self.admin_window:
+            self._logger.debug("Closing admin window.")
+            if hasattr(self.admin_window, "logout_signal"):
+                try:
+                    self.admin_window.logout_signal.disconnect(self._confirm_logout)
+                except TypeError:
+                    pass
             self.admin_window.close()
             self.admin_window = None
 
         if self.main_controller_window:
+            self._logger.debug(
+                "Closing existing main controller window before opening new one."
+            )
+            if hasattr(self.main_controller_window, "logout_signal"):
+                try:
+                    self.main_controller_window.logout_signal.disconnect(
+                        self._confirm_logout
+                    )
+                except TypeError:
+                    pass
             self.main_controller_window.close()
+            self.main_controller_window = None  # Ensure it's fully gone
 
+        self._logger.debug(
+            f"Creating new ControllerWindow for {username}, role {role}."
+        )
         self.main_controller_window = ControllerWindow(
             username=username, user_id=user_id, role=role
         )
@@ -262,21 +312,42 @@ class WindowManager(QObject):
             self.main_controller_window.chat_area.update_theme(current_theme)
 
         self.main_controller_window.show()
+        self.show_message(
+            f"Welcome, {username}! You are logged in as {role}.", "Login Successful"
+        )
 
     def show_admin_window(self, username: str):
         """Show the admin panel."""
-        self._logger.info(f"Showing admin window for user {username}")
-        if self.login_window:
+        self._logger.info(f"Transitioning to admin window for user '{username}'.")
+        if self.login_window and self.login_window.isVisible():
+            self._logger.debug("Hiding login window.")
             self.login_window.hide()
-        if self.register_window:
+        if self.register_window and self.register_window.isVisible():
+            self._logger.debug("Hiding registration window.")
             self.register_window.hide()
-        if self.main_controller_window:  # Close main window if it was open
+        if self.main_controller_window:
+            self._logger.debug("Closing main controller window.")
+            if hasattr(self.main_controller_window, "logout_signal"):
+                try:
+                    self.main_controller_window.logout_signal.disconnect(
+                        self._confirm_logout
+                    )
+                except TypeError:
+                    pass
             self.main_controller_window.close()
             self.main_controller_window = None
 
-        if self.admin_window:  # Close existing if any
+        if self.admin_window:
+            self._logger.debug("Closing existing admin window before opening new one.")
+            if hasattr(self.admin_window, "logout_signal"):
+                try:
+                    self.admin_window.logout_signal.disconnect(self._confirm_logout)
+                except TypeError:
+                    pass
             self.admin_window.close()
+            self.admin_window = None  # Ensure it's fully gone
 
+        self._logger.debug(f"Creating new AdminWindow for {username}.")
         self.admin_window = AdminWindow(username=username)
 
         # Connect AdminWindow signals
@@ -292,6 +363,7 @@ class WindowManager(QObject):
         self._apply_theme_to_specific_elements(current_theme)
 
         self.admin_window.show()
+        self.show_message(f"Welcome, Admin {username}!", "Admin Login Successful")
 
     def connect_admin_window_signals(self, app_controller):
         """Connect signals from AdminWindow to AppController."""
@@ -397,8 +469,10 @@ class WindowManager(QObject):
             self.main_controller_window.update_peer_status(
                 connected=True, peer_username=peer_username, session_id=session_id
             )
+        # This message can be numerous, consider making it a status bar update or less intrusive
+        # For now, keeping it as a dialog for clarity of change.
         self.show_message(
-            f"Connected to {peer_username} (Session ID: {session_id})",
+            f"Successfully connected to peer: {peer_username}.\nSession ID: {session_id}",
             "Connection Established",
         )
 
@@ -407,7 +481,15 @@ class WindowManager(QObject):
             self.main_controller_window, "update_peer_status"
         ):
             self.main_controller_window.update_peer_status(connected=False)
-        self.show_message("Session has ended.", "Session Ended")
+
+        # Check if a main window is visible before showing session ended message
+        active_main_window = self.main_controller_window or self.admin_window
+        if active_main_window and active_main_window.isVisible():
+            self.show_message("The session has ended.", "Session Ended")
+        else:
+            self._logger.info(
+                "Session ended, but no main UI active to display message to."
+            )
 
     def update_controller_permissions(self, granted_permissions: dict):
         if (
@@ -416,9 +498,14 @@ class WindowManager(QObject):
         ):
             if hasattr(self.main_controller_window, "set_active_permissions"):
                 self.main_controller_window.set_active_permissions(granted_permissions)
-            self.show_message(
-                f"Permissions updated: {granted_permissions}", "Permissions"
-            )
+                # This message can be frequent during permission changes.
+                # self.show_message(
+                #     f"Permissions updated: {granted_permissions}", "Permissions"
+                # )
+                # Instead, rely on UI update in ControllerWindow for feedback.
+                self._logger.info(
+                    f"Controller permissions updated: {granted_permissions}"
+                )
 
     def display_remote_frame(self, frame_bytes: bytes):
         if (
@@ -543,10 +630,16 @@ class WindowManager(QObject):
 
     def _confirm_logout(self):
         active_window = self.main_controller_window or self.admin_window
-        if not active_window:
-            # If no main window is active (e.g. only login window showing), just logout.
-            if self.app_controller:
-                self.app_controller.handle_logout()
+
+        # If no main/admin window is active, or if app_controller is not set,
+        # it might mean we are in a weird state or already logged out.
+        # Directly proceed to ensure login window is shown if possible.
+        if not active_window or not self.app_controller:
+            self._logger.warning(
+                "Logout confirmation skipped: No active window or app_controller not set."
+            )
+            # Ensure clean transition to login window as a fallback
+            self.show_login_window(from_logout=True if self.app_controller else False)
             return
 
         msg_box = QMessageBox(active_window)
@@ -558,18 +651,23 @@ class WindowManager(QObject):
 
         if msg_box.exec_() == QMessageBox.Yes:
             self._logger.info("User confirmed logout")
-            if self.app_controller:  # Ensure app_controller exists
+            if self.app_controller:
+                self._logger.info(
+                    "User confirmed logout. Requesting AppController to handle logout."
+                )
                 self.app_controller.handle_logout()  # AppController will emit logout_complete
-            else:  # Fallback if somehow app_controller is not set
-                self.show_login_window()
+            else:
+                self._logger.warning(
+                    "Logout confirmed, but AppController not available. Forcing show_login_window."
+                )
+                self.show_login_window(from_logout=True)  # Show logout message
 
-    def handle_app_controller_logout(
-        self,
-    ):  # This is connected to AppController.logout_complete
-        if self.main_controller_window:
-            self.main_controller_window.close()
-            self.main_controller_window = None
-        if self.admin_window:  # Also close admin window on logout
-            self.admin_window.close()
-            self.admin_window = None
-        self.show_login_window()
+    def handle_app_controller_logout(self):
+        """
+        This method is intended to be connected to AppController's logout_complete signal.
+        It ensures the UI is reset to the login state after AppController has finished its logout logic.
+        """
+        self._logger.info(
+            "WindowManager handling AppController's logout_complete signal."
+        )
+        self.show_login_window(from_logout=True)
