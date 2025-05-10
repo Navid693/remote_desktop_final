@@ -1017,7 +1017,7 @@ class ControllerWindow(QMainWindow):
 
     def _handle_controller_key_press(self, event: QKeyEvent):
         """
-        Handles key press events on the controller side.
+        Handles key press events on the controller side, including special keys like Alt, Win, Ctrl, etc.
         """
         if (
             self.role == "controller"
@@ -1027,17 +1027,17 @@ class ControllerWindow(QMainWindow):
         ):
             key_data = {
                 "type": "keypress",
-                "key_code": event.key(),
-                "text": event.text(),
+                "key_code": event.key(),  # Always include this
+                "text": event.text() or "",  # Some keys have no text
                 "is_auto_repeat": event.isAutoRepeat(),
                 "modifiers": self._get_qt_modifiers(event.modifiers()),
             }
             self.input_event_generated.emit(key_data)
-            log.debug(f"Controller key press: {key_data}")
+            log.debug(f"Key press sent: {key_data}")
 
     def _handle_controller_key_release(self, event: QKeyEvent):
         """
-        Handles key release events on the controller side.
+        Handles key release events on the controller side, including special keys like Alt, Win, Ctrl, etc.
         """
         if (
             self.role == "controller"
@@ -1048,12 +1048,13 @@ class ControllerWindow(QMainWindow):
             key_data = {
                 "type": "keyrelease",
                 "key_code": event.key(),
-                "text": event.text(),
+                "text": event.text() or "",
                 "is_auto_repeat": event.isAutoRepeat(),
                 "modifiers": self._get_qt_modifiers(event.modifiers()),
             }
             self.input_event_generated.emit(key_data)
-            log.debug(f"Controller key release: {key_data}")
+            log.debug(f"Key release sent: {key_data}")
+
 
     def _handle_controller_mouse_move(self, event: QMouseEvent):
         """
