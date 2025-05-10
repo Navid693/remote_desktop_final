@@ -30,7 +30,7 @@ import zlib
 from enum import IntEnum
 from typing import Any, Dict, Tuple, Union
 
-from PIL import Image  # pillow for image processing
+from PIL import Image, ImageOps  # pillow for image processing
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -78,11 +78,10 @@ class PacketType(IntEnum):
 HEADER_STRUCT = struct.Struct("!I")  # 4-byte length prefix
 MAX_PACKET_SIZE = 100 * 1024 * 1024  # 100 MB max packet
 
-# Image processing options
-JPEG_OPTS = {
-    "format": "JPEG",
-    "optimize": True,
-    "progressive": True,
+# Optimized image settings for maximum quality
+IMAGE_OPTS = {
+    "format": "PNG",  # Use PNG for lossless quality
+    "optimize": True,  # Enable optimization
 }
 
 
@@ -154,39 +153,73 @@ def recv(sock: socket.socket) -> Tuple[PacketType, Union[Dict[str, Any], bytes]]
     return PacketType.FRAME, payload
 
 
-def encode_image(img: Image.Image, quality: int = 75, scale: int = 100) -> bytes:
-    """Compress PIL Image using JPEG + zlib.
+def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> bytes:
+    """Compress PIL Image using optimized settings.
 
     Args:
-        img: PIL Image to compress
-        quality: JPEG quality (1-100)
-        scale: Output scale percentage
+        img: PIL Image to process
+        quality: Quality setting (1-100), affects JPEG only
+        scale: Output scale percentage (default 100 = no scaling)
 
     Returns:
         Compressed image bytes
     """
+    # Process image in native resolution
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    # Apply sharpening and contrast enhancement
+    img = ImageOps.autocontrast(img, cutoff=0)
+    
+    # Scale if needed (maintain aspect ratio)
     if scale != 100:
         w, h = img.size
-        img = img.resize((w * scale // 100, h * scale // 100))
+        new_w = max(1, int(w * scale / 100))
+        new_h = max(1, int(h * scale / 100))
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
+    # Save with optimal settings
     buf = io.BytesIO()
-    img.save(buf, quality=quality, **JPEG_OPTS)
-    return zlib.compress(buf.getvalue(), level=6)
+    try:
+        # Try PNG first for best quality
+        img.save(buf, **IMAGE_OPTS)
+        data = buf.getvalue()
+        
+        # If PNG is too large, fall back to high-quality JPEG
+        if len(data) > MAX_PACKET_SIZE:
+            buf.seek(0)
+            buf.truncate()
+            img.save(buf, format='JPEG', quality=quality, optimize=True, subsampling=0)
+            data = buf.getvalue()
+            
+    except Exception as e:
+        logger.warning(f"Image save failed with {str(e)}, falling back to JPEG")
+        buf.seek(0)
+        buf.truncate()
+        img.save(buf, format='JPEG', quality=quality, optimize=True, subsampling=0)
+        data = buf.getvalue()
+    
+    # Use light compression to maintain quality
+    return zlib.compress(data, level=1)
 
 
 def decode_image(data: bytes) -> Image.Image:
     """Decompress bytes back to PIL Image.
-
+    
     Args:
         data: Compressed image bytes from encode_image()
 
     Returns:
         PIL Image in RGB mode
-
-    Raises:
-        PIL.UnidentifiedImageError: On invalid image data
     """
-    return Image.open(io.BytesIO(zlib.decompress(data))).convert("RGB")
+    decompressed = zlib.decompress(data)
+    img = Image.open(io.BytesIO(decompressed))
+    
+    # Force RGB mode and apply minimal enhancements
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    
+    return ImageOps.autocontrast(img, cutoff=0)
 
 
 # Helper for exact socket reads

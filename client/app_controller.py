@@ -66,8 +66,8 @@ class AppSignals(QObject):
 
 
 class AppController:
-    ADMIN_USERNAME = "useradmin"
-    ADMIN_PASSWORD = "adminpassword"
+    ADMIN_USERNAME = "admin"
+    ADMIN_PASSWORD = "admin"
 
     def __init__(self, window_manager):
         self.wm = window_manager

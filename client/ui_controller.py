@@ -7,10 +7,12 @@ and chatting.
 """
 
 import datetime
+import io
 import logging
 import time
 
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageEnhance, Image
+from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal, QBuffer
 from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import (
@@ -36,7 +38,10 @@ from PyQt5.QtWidgets import (
     QStatusBar,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
 )
+
+import win32print  # Added for DPI awareness
 
 from client.widgets.chat_widget import (
     ChatAreaWidget,
@@ -161,8 +166,130 @@ class ControllerWindow(QMainWindow):
             log.info("Screen recording stopped")
 
     def _take_screenshot(self):
-        log.info("Screenshot taken")
-        self.show_message("Screenshot saved", "Screenshot")
+        """
+        Captures the current screen content and saves it using a file dialog.
+        Handles both controller (remote screen) and target (local screen) roles.
+        """
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            
+            if self.role == "controller":
+                # For controller role, get the current remote screen from QLabel
+                pixmap = self.screen_label.pixmap()
+                if not pixmap or pixmap.isNull():
+                    error_msg = "No screen content available to capture"
+                    log.error(f"Screenshot error - User: {self.username}, Role: {self.role} - {error_msg}")
+                    self.show_error(error_msg, "Screenshot Error")
+                    return
+                    
+                # Get original unscaled image
+                original_image = QImage(pixmap.toImage())
+                # Convert QImage to PIL Image for better quality processing
+                buffer = QBuffer()
+                buffer.open(QBuffer.ReadWrite)
+                original_image.save(buffer, "PNG", 100)
+                
+                pil_image = Image.open(io.BytesIO(buffer.data()))
+                image_to_save = pil_image
+                source = f"remote screen (peer: {self.peer_username})"
+            else:
+                # For target role, capture local screen at native resolution
+                import win32gui
+                import win32ui
+                import win32con
+                import win32api
+                
+                # Get true screen dimensions including scaling
+                dc = win32gui.GetDC(0)
+                dpi_x = win32print.GetDeviceCaps(dc, win32con.LOGPIXELSX)
+                screen_width = win32api.GetSystemMetrics(0)
+                screen_height = win32api.GetSystemMetrics(1)
+                
+                # Account for Windows DPI scaling
+                scale_factor = dpi_x / 96.0
+                screen_width = int(screen_width * scale_factor)
+                screen_height = int(screen_height * scale_factor)
+                
+                hdesktop = win32gui.GetDesktopWindow()
+                desktop_dc = win32gui.GetWindowDC(hdesktop)
+                img_dc = win32ui.CreateDCFromHandle(desktop_dc)
+                mem_dc = img_dc.CreateCompatibleDC()
+                
+                screenshot = win32ui.CreateBitmap()
+                screenshot.CreateCompatibleBitmap(img_dc, screen_width, screen_height)
+                mem_dc.SelectObject(screenshot)
+                
+                # Capture in full resolution
+                mem_dc.StretchBlt(
+                    (0, 0), (screen_width, screen_height),
+                    img_dc,
+                    (0, 0), (int(screen_width/scale_factor), int(screen_height/scale_factor)),
+                    win32con.SRCCOPY
+                )
+                
+                # Convert to PIL Image maintaining full resolution
+                bmpinfo = screenshot.GetInfo()
+                bmpstr = screenshot.GetBitmapBits(True)
+                image_to_save = Image.frombuffer(
+                    'RGB',
+                    (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                    bmpstr, 'raw', 'BGRX', 0, 1
+                )
+                
+                # Cleanup
+                mem_dc.DeleteDC()
+                win32gui.ReleaseDC(hdesktop, desktop_dc)
+                win32gui.DeleteObject(screenshot.GetHandle())
+                source = "local screen"
+            
+            # Process save asynchronously
+            def save_screenshot():
+                try:
+                    default_filename = f"screenshot_{self.username}_{timestamp}.png"
+                    file_path, selected_filter = QFileDialog.getSaveFileName(
+                        self,
+                        "Save Screenshot",
+                        default_filename,
+                        "PNG Files (*.png);;JPEG Files (*.jpg *.jpeg)",
+                        "PNG Files (*.png)"
+                    )
+                    
+                    if file_path:
+                        # Add extension if not provided
+                        if not any(file_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg']):
+                            file_path += '.png'
+                        
+                        # Save image at full resolution
+                        if file_path.lower().endswith('.png'):
+                            image_to_save.save(file_path, format='PNG')
+                        else:
+                            # For JPEG, use maximum quality
+                            image_to_save.save(file_path, format='JPEG', quality=100, subsampling=0)
+                            
+                        success_msg = f"Screenshot saved to: {file_path}"
+                        log.info(
+                            f"High resolution screenshot saved - User: {self.username}, Role: {self.role}, "
+                            f"Source: {source}, File: {file_path}, Time: {timestamp}, "
+                            f"Size: {image_to_save.size}"
+                        )
+                        self.show_message(success_msg, "Screenshot Success")
+                    
+                except Exception as e:
+                    log.exception(
+                        f"Screenshot save error - User: {self.username}, Role: {self.role}, "
+                        f"Source: {source}, Time: {timestamp}"
+                    )
+                    self.show_error(f"Screenshot save error: {str(e)}", "Screenshot Error")
+            
+            # Use QTimer to process the save dialog in the next event loop iteration
+            QTimer.singleShot(0, save_screenshot)
+            
+        except Exception as e:
+            log.exception(
+                f"Screenshot capture error - User: {self.username}, Role: {self.role}, "
+                f"Time: {timestamp}"
+            )
+            self.show_error(f"Screenshot capture error: {str(e)}", "Screenshot Error")
 
     def _show_logs(self):
         log.info("Opening log viewer")
@@ -342,7 +469,7 @@ class ControllerWindow(QMainWindow):
         self._update_role_ui()
 
     def _send_placeholder_frame(self):
-        if self.role == "target" and self.session_id and self.peer_username:
+        if (self.role == "target" and self.session_id and self.peer_username):
             try:
                 import win32gui
                 import win32ui
@@ -350,56 +477,88 @@ class ControllerWindow(QMainWindow):
                 import win32api
                 from PIL import Image
 
-                screen_width = win32api.GetSystemMetrics(0)
-                screen_height = win32api.GetSystemMetrics(1)
+                # Get true screen dimensions including scaling
+                dc = win32gui.GetDC(0)
+                dpi_x = win32print.GetDeviceCaps(dc, win32con.LOGPIXELSX)
+                dpi_y = win32print.GetDeviceCaps(dc, win32con.LOGPIXELSY)
+                win32gui.ReleaseDC(0, dc)
+                
+                # Account for Windows DPI scaling
+                scale_factor = dpi_x / 96.0  # Standard DPI is 96
+                
+                # Get actual screen dimensions
+                screen_width = int(win32api.GetSystemMetrics(0) * scale_factor)
+                screen_height = int(win32api.GetSystemMetrics(1) * scale_factor)
 
                 hdesktop = win32gui.GetDesktopWindow()
                 desktop_dc = win32gui.GetWindowDC(hdesktop)
                 img_dc = win32ui.CreateDCFromHandle(desktop_dc)
                 mem_dc = img_dc.CreateCompatibleDC()
 
+                # Create high resolution bitmap
                 screenshot = win32ui.CreateBitmap()
                 screenshot.CreateCompatibleBitmap(img_dc, screen_width, screen_height)
                 mem_dc.SelectObject(screenshot)
 
-                mem_dc.BitBlt((0, 0), (screen_width, screen_height), img_dc, (0, 0), win32con.SRCCOPY)
+                # Copy screen content with proper scaling
+                mem_dc.StretchBlt(
+                    (0, 0), (screen_width, screen_height),
+                    img_dc, 
+                    (0, 0), (int(screen_width/scale_factor), int(screen_height/scale_factor)), 
+                    win32con.SRCCOPY
+                )
 
-                # Draw cursor on screenshot
+                # Draw cursor on screenshot with proper scaling
                 cursor_info = win32gui.GetCursorInfo()
                 if cursor_info[1]:  # Check if cursor is showing
                     cursor_handle = cursor_info[1]
                     cursor_pos = win32gui.GetCursorPos()
-                    win32gui.DrawIconEx(mem_dc.GetSafeHdc(), cursor_pos[0], cursor_pos[1],
-                                      cursor_handle, 0, 0, 0, None, win32con.DI_NORMAL)
+                    scaled_x = int(cursor_pos[0] * scale_factor)
+                    scaled_y = int(cursor_pos[1] * scale_factor)
+                    win32gui.DrawIconEx(
+                        mem_dc.GetSafeHdc(), 
+                        scaled_x, scaled_y,
+                        cursor_handle, 
+                        0, 0, 0, None, 
+                        win32con.DI_NORMAL
+                    )
 
-                # Convert to PIL Image
+                # Convert to PIL Image with proper color depth
                 bmpinfo = screenshot.GetInfo()
                 bmpstr = screenshot.GetBitmapBits(True)
                 pil_image = Image.frombuffer(
-                    "RGB",
-                    (bmpinfo["bmWidth"], bmpinfo["bmHeight"]),
-                    bmpstr,
-                    "raw",
-                    "BGRX",
-                    0,
-                    1,
+                    'RGB',
+                    (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                    bmpstr, 'raw', 'BGRX', 0, 1
                 )
+
+                # Apply image enhancements
+                from PIL import ImageEnhance
+                enhancer = ImageEnhance.Sharpness(pil_image)
+                pil_image = enhancer.enhance(1.2)  # Slight sharpness enhancement
+                
+                enhancer = ImageEnhance.Contrast(pil_image)
+                pil_image = enhancer.enhance(1.1)  # Slight contrast enhancement
 
                 # Cleanup Win32 resources
                 mem_dc.DeleteDC()
                 win32gui.ReleaseDC(hdesktop, desktop_dc)
                 win32gui.DeleteObject(screenshot.GetHandle())
 
-                # Compress and send
-                compressed_frame = encode_image(pil_image, quality=75, scale=100)
+                # Compress with maximum quality settings
+                compressed_frame = encode_image(
+                    pil_image,
+                    quality=100,  # Maximum JPEG quality
+                    scale=100     # No scaling/compression
+                )
                 self.frame_to_send_generated.emit(compressed_frame)
 
-            except Exception:
-                log.exception("Error capturing or encoding screen frame with cursor.")
+            except Exception as e:
+                log.exception(f"Error capturing or encoding screen frame: {str(e)}")
 
     def _update_role_ui(self):
         is_controller = self.role == "controller"
-        if is_controller:
+        if (is_controller):
             if self.target_uid_input not in self.toolbar.children():
                 actions = self.toolbar.actions()
                 spacer_action = None
@@ -588,7 +747,18 @@ class ControllerWindow(QMainWindow):
                 self.screen_label.setText("Received empty frame.")
                 return
             try:
+                # Decode image with high quality settings
                 pil_image = decode_image(frame_bytes)
+                
+                # Apply image enhancements for better clarity
+                from PIL import ImageEnhance
+                enhancer = ImageEnhance.Sharpness(pil_image)
+                pil_image = enhancer.enhance(1.2)  # Slight sharpness enhancement
+                
+                enhancer = ImageEnhance.Contrast(pil_image)
+                pil_image = enhancer.enhance(1.1)  # Slight contrast enhancement
+
+                # Convert to QImage with proper color format
                 if pil_image.mode == "RGB":
                     q_image_format = QImage.Format_RGB888
                 elif pil_image.mode == "RGBA":
@@ -596,20 +766,26 @@ class ControllerWindow(QMainWindow):
                 else:
                     pil_image = pil_image.convert("RGB")
                     q_image_format = QImage.Format_RGB888
+
+                # Create QImage with proper stride
                 img_byte_array = pil_image.tobytes()
+                bytes_per_line = pil_image.width * len(pil_image.getbands())
                 qimage = QImage(
                     img_byte_array,
                     pil_image.width,
                     pil_image.height,
-                    pil_image.width * len(pil_image.getbands()),
+                    bytes_per_line,
                     q_image_format,
                 )
+
                 if qimage.isNull():
                     log.error("Failed to convert PIL image to QImage (isNull).")
                     self.screen_label.setText(
                         "Error displaying frame (conversion failed)."
                     )
                     return
+
+                # Convert to QPixmap with high quality
                 pixmap = QPixmap.fromImage(qimage)
                 if pixmap.isNull():
                     log.error("Failed to create QPixmap from QImage (isNull).")
@@ -617,12 +793,15 @@ class ControllerWindow(QMainWindow):
                         "Error displaying frame (pixmap creation failed)."
                     )
                     return
+
+                # Scale with high quality settings
                 scaled_pixmap = pixmap.scaled(
                     self.screen_label.size(),
                     Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation,
+                    Qt.SmoothTransformation  # Use high quality scaling
                 )
                 self.screen_label.setPixmap(scaled_pixmap)
+
             except Exception as e:
                 log.exception("Error processing/displaying frame data.")
                 self.screen_label.setText(f"Error displaying frame: {e}")
