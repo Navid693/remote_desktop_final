@@ -65,6 +65,7 @@ from shared.protocol import (
     decode_image,
     encode_image,
 )
+from client.input_handler import create_key_release_event
 
 
 # Custom QLabel for capturing input events
@@ -75,6 +76,7 @@ class InputForwardingLabel(QLabel):
     mouse_pressed_signal = pyqtSignal(QMouseEvent)
     mouse_released_signal = pyqtSignal(QMouseEvent)
     wheel_event_signal = pyqtSignal(QWheelEvent)
+    focus_lost_signal = pyqtSignal()  # Signal for focus loss
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,24 +86,42 @@ class InputForwardingLabel(QLabel):
         self.setObjectName("ScreenDisplayWidget")
         self._is_dragging = False
         self._last_click_pos = None
+        self._pressed_keys = set()  # Track currently pressed keys
+        self._active_modifiers = set()  # Track active modifier keys
 
     def keyPressEvent(self, event: QKeyEvent):
+        self._pressed_keys.add(event.key())
+        if event.modifiers():
+            self._active_modifiers.add(event.modifiers())
         self.key_pressed_signal.emit(event)
 
     def keyReleaseEvent(self, event: QKeyEvent):
+        if event.key() in self._pressed_keys:
+            self._pressed_keys.remove(event.key())
+        if event.modifiers() in self._active_modifiers:
+            self._active_modifiers.remove(event.modifiers())
         self.key_released_signal.emit(event)
+
+    def focusOutEvent(self, event):
+        # Release all pressed keys when focus is lost
+        for key in list(self._pressed_keys):
+            self.key_released_signal.emit(create_key_release_event(key))
+        self._pressed_keys.clear()
+        self._active_modifiers.clear()
+        self.focus_lost_signal.emit()
+        super().focusOutEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        self.setFocus()  # Request focus when clicked
+        self._is_dragging = True
+        self._last_click_pos = event.pos()
+        self.mouse_pressed_signal.emit(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
         self.mouse_moved_signal.emit(event)
         if self._is_dragging:
             # Emit press event during drag to maintain button state
             self.mouse_pressed_signal.emit(event)
-
-    def mousePressEvent(self, event: QMouseEvent):
-        self.setFocus()
-        self._is_dragging = True
-        self._last_click_pos = event.pos()
-        self.mouse_pressed_signal.emit(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         self._is_dragging = False
@@ -110,6 +130,13 @@ class InputForwardingLabel(QLabel):
 
     def wheelEvent(self, event: QWheelEvent):
         self.wheel_event_signal.emit(event)
+
+    def releaseAll(self):
+        """Manually release all pressed keys and modifiers"""
+        for key in list(self._pressed_keys):
+            self.key_released_signal.emit(create_key_release_event(key))
+        self._pressed_keys.clear()
+        self._active_modifiers.clear()
 
 
 class ControllerWindow(QMainWindow):

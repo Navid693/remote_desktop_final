@@ -28,6 +28,7 @@ from win32api import GetSystemMetrics
 
 from client.controller_client import ControllerClient
 from client.target_client import TargetClient
+from client.input_handler import get_modifier_keys
 from relay_server.database import (
     Database,
 )
@@ -818,6 +819,186 @@ class AppController:
             logger.error(f"Error processing modifiers: {e}")
         return tuple(modifiers)
 
+    def _release_all_modifiers(self):
+        """Release all modifier keys to prevent them from getting stuck"""
+        if not hasattr(self, '_keyboard_controller'):
+            return
+            
+        for modifier in get_modifier_keys():
+            try:
+                self._keyboard_controller.release(modifier)
+                logger.debug(f"Released modifier key: {modifier}")
+            except Exception as e:
+                logger.debug(f"Error releasing modifier {modifier}: {e}")
+
+
+    def switch_role(self, new_role: str):
+        """
+        Switch the current user role and reset session state.
+
+        Args:
+            new_role: The new role to switch to.
+        """
+        if self.current_role == new_role:
+            logger.info(f"Already in role: {new_role}")
+            return
+        logger.info(f"Switching role from {self.current_role} to {new_role}")
+        self.handle_logout()
+        self.signals.role_changed.emit(new_role)
+
+    def admin_fetch_users(self):
+        """
+        Fetch the list of users (admin only).
+        """
+        if self.current_role == "admin":
+            users = self.db.list_users()
+            self.signals.admin_users_fetched.emit(users)
+        else:
+            logger.warning("Non-admin tried to fetch users.")
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_add_user(self, username: str, password: str, role: str):
+        """
+        Add a new user (admin only).
+
+        Args:
+            username: The new username.
+            password: The new password.
+            role: The user role.
+        """
+        if self.current_role == "admin":
+            if not username or not password:
+                self.signals.admin_user_operation_complete.emit(
+                    False, "Username and password are required."
+                )
+                return
+            user_id = self.db.register_user(username, password)
+            if user_id:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User {username} (ID: {user_id}) added."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False, f"Failed to add user {username}. Username might exist."
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_edit_user(
+        self,
+        user_id: int,
+        new_username: Optional[str] = None,
+        new_password: Optional[str] = None,
+    ):
+        """
+        Edit an existing user (admin only).
+
+        Args:
+            user_id: The user ID to edit.
+            new_username: The new username (optional).
+            new_password: The new password (optional).
+        """
+        if self.current_role == "admin":
+            if not new_username and not new_password:
+                self.signals.admin_user_operation_complete.emit(
+                    False, "No changes specified for user."
+                )
+                return
+            success = self.db.update_user_details(user_id, new_username, new_password)
+            if success:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User ID {user_id} updated."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False,
+                    f"Failed to update user ID {user_id}. Username might conflict.",
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_delete_user(self, user_id: int):
+        """
+        Delete a user (admin only).
+
+        Args:
+            user_id: The user ID to delete.
+        """
+        if self.current_role == "admin":
+            if (
+                user_id == self.current_user_id
+                and self.current_username == self.ADMIN_USERNAME
+            ):
+                self.signals.admin_user_operation_complete.emit(
+                    False, "Cannot delete the active admin user."
+                )
+                return
+            success = self.db.delete_user(user_id)
+            if success:
+                self.signals.admin_user_operation_complete.emit(
+                    True, f"User ID {user_id} deleted."
+                )
+                self.admin_fetch_users()
+            else:
+                self.signals.admin_user_operation_complete.emit(
+                    False,
+                    f"Failed to delete user ID {user_id}. User might be in active sessions or have logs.",
+                )
+        else:
+            self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
+
+    def admin_fetch_logs(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        level: Optional[str] = None,
+        event: Optional[str] = None,
+        user: Optional[str] = None,
+    ):
+        """
+        Fetch logs from the database (admin only).
+
+        Args:
+            limit: Maximum number of logs to fetch.
+            offset: Offset for pagination.
+            level: Log level filter (optional).
+            event: Event filter (optional).
+            user: Username filter (optional).
+        """
+        if self.current_role == "admin":
+            logs = self.db.get_logs(limit, offset, level, event, user)
+            self.signals.admin_logs_fetched.emit(logs)
+        else:
+            logger.warning("Non-admin tried to fetch logs.")
+            self.signals.admin_log_operation_complete.emit(False, "Permission denied.")
+
+    def _connect_signals(self):
+        """Connect all UI signals to their handlers"""
+        # ... existing code ...
+        
+        # Add focus lost handler
+        self.wm.screen_label.focus_lost_signal.connect(self._handle_focus_lost)
+
+    def _handle_focus_lost(self):
+        """Handle focus lost event by releasing all modifiers"""
+        if hasattr(self, '_keyboard_controller'):
+            self._release_all_modifiers()
+            logger.info("Released all modifiers due to focus loss")
+
+    def _release_all_modifiers(self):
+        """Release all modifier keys to prevent them from getting stuck"""
+        if not hasattr(self, '_keyboard_controller'):
+            return
+            
+        for modifier in get_modifier_keys():
+            try:
+                self._keyboard_controller.release(modifier)
+                logger.debug(f"Released modifier key: {modifier}")
+            except Exception as e:
+                logger.debug(f"Error releasing modifier {modifier}: {e}")
+
     def _handle_input_data(self, input_event_data: dict):
         """Handle incoming input events from controller"""
         if not PYNPUT_AVAILABLE:
@@ -852,8 +1033,9 @@ class AppController:
                     logger.error(f"Failed to get screen dimensions: {e}")
                     return
 
-            if event_type == "mousemove":
-                try:
+            # Handle mouse events with better error handling
+            try:
+                if event_type == "mousemove":
                     norm_x = input_event_data.get("norm_x")
                     norm_y = input_event_data.get("norm_y")
                     if norm_x is not None and norm_y is not None:
@@ -871,11 +1053,8 @@ class AppController:
                                     self._mouse_controller.press(button)
                                 except Exception as e:
                                     logger.error(f"Error pressing mouse button during drag: {e}")
-                except Exception as e:
-                    logger.error(f"Error handling mousemove: {e}")
 
-            elif event_type == "mousepress":
-                try:
+                elif event_type == "mousepress":
                     button_name = input_event_data.get("button")
                     norm_x = input_event_data.get("norm_x")
                     norm_y = input_event_data.get("norm_y")
@@ -890,11 +1069,8 @@ class AppController:
                             self._mouse_controller.press(button)
                         else:
                             logger.warning(f"Unknown mouse button: {button_name}")
-                except Exception as e:
-                    logger.error(f"Error handling mousepress: {e}")
 
-            elif event_type == "mouserelease":
-                try:
+                elif event_type == "mouserelease":
                     button_name = input_event_data.get("button")
                     if button_name:
                         button = getattr(mouse.Button, button_name, None)
@@ -903,22 +1079,22 @@ class AppController:
                             self._mouse_controller.release(button)
                         else:
                             logger.warning(f"Unknown mouse button: {button_name}")
-                except Exception as e:
-                    logger.error(f"Error handling mouserelease: {e}")
 
-            elif event_type == "wheel":
-                try:
+                elif event_type == "wheel":
                     delta_x = input_event_data.get("delta_x", 0)
                     delta_y = input_event_data.get("delta_y", 0)
-                    # Normalize scroll values to prevent extreme scrolling
+                    # Normalize scroll values
                     delta_x = max(-1, min(1, delta_x))
                     delta_y = max(-1, min(1, delta_y))
                     logger.debug(f"Mouse wheel: dx={delta_x}, dy={delta_y}")
                     self._mouse_controller.scroll(delta_x, delta_y)
-                except Exception as e:
-                    logger.error(f"Error handling mouse wheel: {e}")
 
-            elif event_type in ("keypress", "keyrelease"):
+            except Exception as e:
+                logger.error(f"Error handling mouse event: {e}")
+                return
+
+            # Handle keyboard events with improved modifier support
+            if event_type in ("keypress", "keyrelease"):
                 try:
                     is_press = event_type == "keypress"
                     qt_key_code = input_event_data.get("key_code")
@@ -930,6 +1106,10 @@ class AppController:
                     if is_auto_repeat:
                         return
 
+                    # For key release events, release modifiers first
+                    if not is_press:
+                        self._release_all_modifiers()
+
                     # Handle printable characters
                     if text and len(text) == 1 and text.isprintable():
                         if is_press:
@@ -939,7 +1119,40 @@ class AppController:
                         logger.debug(f"Handled printable key: {text} ({'press' if is_press else 'release'})")
                         return
 
-                    # Special keys mapping with extended support
+                    # Handle special keys
+                    if qt_key_code in [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta]:
+                        special_keys = {
+                            Qt.Key_Shift: keyboard.Key.shift,
+                            Qt.Key_Control: keyboard.Key.ctrl,
+                            Qt.Key_Alt: keyboard.Key.alt,
+                            Qt.Key_Meta: keyboard.Key.cmd
+                        }
+                        key = special_keys[qt_key_code]
+                        try:
+                            if is_press:
+                                self._keyboard_controller.press(key)
+                            else:
+                                self._keyboard_controller.release(key)
+                                # Also release left/right variants
+                                if key == keyboard.Key.shift:
+                                    self._keyboard_controller.release(keyboard.Key.shift_l)
+                                    self._keyboard_controller.release(keyboard.Key.shift_r)
+                                elif key == keyboard.Key.ctrl:
+                                    self._keyboard_controller.release(keyboard.Key.ctrl_l)
+                                    self._keyboard_controller.release(keyboard.Key.ctrl_r)
+                                elif key == keyboard.Key.alt:
+                                    self._keyboard_controller.release(keyboard.Key.alt_l)
+                                    self._keyboard_controller.release(keyboard.Key.alt_r)
+                                    self._keyboard_controller.release(keyboard.Key.alt_gr)
+                                elif key == keyboard.Key.cmd:
+                                    self._keyboard_controller.release(keyboard.Key.cmd_l)
+                                    self._keyboard_controller.release(keyboard.Key.cmd_r)
+                            logger.debug(f"Handled modifier key: {key} ({'press' if is_press else 'release'})")
+                        except Exception as e:
+                            logger.error(f"Error handling modifier key {key}: {e}")
+                        return
+
+                    # Handle other special keys
                     special_keys = {
                         Qt.Key_Return: keyboard.Key.enter,
                         Qt.Key_Enter: keyboard.Key.enter,
@@ -969,10 +1182,6 @@ class AppController:
                         Qt.Key_F10: keyboard.Key.f10,
                         Qt.Key_F11: keyboard.Key.f11,
                         Qt.Key_F12: keyboard.Key.f12,
-                        Qt.Key_Shift: keyboard.Key.shift,
-                        Qt.Key_Control: keyboard.Key.ctrl,
-                        Qt.Key_Alt: keyboard.Key.alt,
-                        Qt.Key_Meta: keyboard.Key.cmd,
                         Qt.Key_CapsLock: keyboard.Key.caps_lock,
                         Qt.Key_NumLock: keyboard.Key.num_lock,
                         Qt.Key_ScrollLock: keyboard.Key.scroll_lock,
@@ -981,35 +1190,45 @@ class AppController:
                         Qt.Key_Menu: keyboard.Key.menu,
                     }
 
-                    # Handle special keys
                     if qt_key_code in special_keys:
                         key = special_keys[qt_key_code]
-                        if is_press:
-                            self._keyboard_controller.press(key)
-                        else:
-                            self._keyboard_controller.release(key)
-                        logger.debug(f"Handled special key: {key} ({'press' if is_press else 'release'})")
+                        try:
+                            if is_press:
+                                self._keyboard_controller.press(key)
+                            else:
+                                self._keyboard_controller.release(key)
+                            logger.debug(f"Handled special key: {key} ({'press' if is_press else 'release'})")
+                        except Exception as e:
+                            logger.error(f"Error handling special key {key}: {e}")
                         return
 
                     # Handle non-printable text as fallback
                     if text and not text.isprintable():
-                        if is_press:
-                            self._keyboard_controller.press(text)
-                        else:
-                            self._keyboard_controller.release(text)
-                        logger.debug(f"Handled non-printable text: {text} ({'press' if is_press else 'release'})")
+                        try:
+                            if is_press:
+                                self._keyboard_controller.press(text)
+                            else:
+                                self._keyboard_controller.release(text)
+                            logger.debug(f"Handled non-printable text: {text} ({'press' if is_press else 'release'})")
+                        except Exception as e:
+                            logger.error(f"Error handling non-printable text '{text}': {e}")
                         return
 
                     logger.debug(f"Unhandled key code: {qt_key_code}, text: {text}")
 
                 except Exception as e:
                     logger.error(f"Error handling keyboard event: {e}")
+                    # On error, try to release all modifiers
+                    self._release_all_modifiers()
+                    return
 
             else:
                 logger.warning(f"Unknown input event type: {event_type}")
 
         except Exception as e:
             logger.exception(f"Error handling input event: {input_event_data}")
+            # On any error, try to release all modifiers
+            self._release_all_modifiers()
 
     def switch_role(self, new_role: str):
         """
