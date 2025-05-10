@@ -1,3 +1,5 @@
+# The `LoginWindow` class in the `ui_login.py` file defines a PyQt5-based lightweight login form with
+# signals for login attempts, registration, and theme toggling.
 # Path: client/ui_login.py
 """
 LoginWindow – Lightweight login form used by WindowManager.

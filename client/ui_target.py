@@ -29,9 +29,22 @@ from client.widgets.chat_widget import ChatWidget
 
 
 class PermDialog(QDialog):
+    """
+    A dialog window that allows the user to grant or deny permissions
+    to the controller for view, mouse, and keyboard access.
+    """
+
     def __init__(
         self, req: dict[str, bool], controller: str, parent: QWidget | None = None
     ) -> None:
+        """
+        Initializes the permission dialog.
+
+        Args:
+            req: A dictionary containing the requested permissions (view, mouse, keyboard).
+            controller: The name of the controller requesting permissions.
+            parent: The parent widget.
+        """
         super().__init__(parent)
         self.setWindowTitle(f"Access request from {controller}")
         self.view = QCheckBox("Allow view", checked=req["view"])
@@ -49,6 +62,12 @@ class PermDialog(QDialog):
         layout.addWidget(bb)
 
     def granted(self) -> dict[str, bool]:
+        """
+        Returns a dictionary containing the granted permissions.
+
+        Returns:
+            A dictionary with boolean values for 'view', 'mouse', and 'keyboard'.
+        """
         return {
             "view": self.view.isChecked(),
             "mouse": self.mouse.isChecked(),
@@ -57,7 +76,16 @@ class PermDialog(QDialog):
 
 
 class TargetWindow(QMainWindow):
+    """
+    The main window for the remote target application.
+    It contains the video display area, chat widget, and handles
+    permission requests from the controller.
+    """
+
     def __init__(self) -> None:
+        """
+        Initializes the target window.
+        """
         super().__init__()
         self.setWindowTitle("Remote Target")
         self.resize(1100, 700)
@@ -80,8 +108,18 @@ class TargetWindow(QMainWindow):
         # permission dialog callback
         self.client.on_perm_request(self._perm_dialog)
 
-    # ------------------------------------------------------------------
     def _perm_dialog(self, req: dict[str, bool], ctrl: str) -> dict[str, bool]:
+        """
+        Displays the permission dialog and returns the granted permissions.
+
+        Args:
+            req: A dictionary containing the requested permissions.
+            ctrl: The name of the controller requesting permissions.
+
+        Returns:
+            A dictionary with boolean values for 'view', 'mouse', and 'keyboard'
+            representing the granted permissions.
+        """
         dlg = PermDialog(req, ctrl, self)
         if dlg.exec_() == QDialog.Accepted:
             return dlg.granted()

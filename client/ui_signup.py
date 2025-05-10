@@ -11,15 +11,30 @@ from PyQt5.QtWidgets import (
 
 
 class RegistrationWindow(QWidget):
+    """
+    A window for user registration.
+
+    This window provides a user interface for creating a new account,
+    including fields for username, password, and password confirmation.
+    It also includes a theme toggle button and a back button to return to the login screen.
+
+    Signals:
+        register_attempt_signal (pyqtSignal): Emitted when the user attempts to register.
+        back_signal (pyqtSignal): Emitted when the user clicks the back button or closes the window.
+        toggle_theme_signal (pyqtSignal): Emitted when the user clicks the theme toggle button.
+    """
+
     register_attempt_signal = pyqtSignal(str, str, str)
     back_signal = pyqtSignal()
     toggle_theme_signal = pyqtSignal()
 
     def __init__(self):
+        """Initializes the RegistrationWindow."""
         super().__init__()
         self._build_ui()
 
     def _build_ui(self) -> None:
+        """Builds the user interface for the registration window."""
         self.setWindowTitle("SCU Remote Desktop — Sign Up")
         self.setMinimumWidth(400)
 
@@ -137,6 +152,7 @@ class RegistrationWindow(QWidget):
         self.user_in.setFocus()
 
     def _on_register(self) -> None:
+        """Handles the registration attempt when the signup button is clicked."""
         user = self.user_in.text().strip()
         pwd = self.pass_in.text()
         confirm = self.pass_confirm.text()
@@ -155,11 +171,13 @@ class RegistrationWindow(QWidget):
         self.register_attempt_signal.emit(user, pwd, confirm)
 
     def _err(self, msg: str) -> bool:
+        """Displays an error message in the error label."""
         self.err_lbl.setText(msg)
         self.err_lbl.show()
         return False
 
     def reset_form(self) -> None:
+        """Resets the form by clearing all input fields and hiding the error label."""
         self.user_in.clear()
         self.pass_in.clear()
         self.pass_confirm.clear()
@@ -176,9 +194,10 @@ class RegistrationWindow(QWidget):
         self.theme_btn.setToolTip(tip)
 
     def show_error(self, message: str):
+        """Displays a custom error message in the error label."""
         self._err(message)
 
     def closeEvent(self, event):
-        """وقتی پنجره بسته میشه، به صفحه لاگین برمیگرده"""
+        """When the window is closed, it returns to the login screen."""
         self.back_signal.emit()
         event.accept()

@@ -579,6 +579,14 @@ class ControllerWindow(QMainWindow):
         self._update_role_ui()
 
     def _send_placeholder_frame(self):
+        """
+        Captures a frame from the target's screen, encodes it, and emits it for sending.
+
+        This function is called periodically by a timer when the application is in 'target' role
+        and a session is active. It captures the screen, optionally includes the cursor,
+        applies image enhancements, and encodes the image before emitting it as a signal.
+        It also handles screen recording if enabled.
+        """
         if self.role == "target" and self.session_id and self.peer_username:
             pil_image = None
             try:
@@ -586,7 +594,6 @@ class ControllerWindow(QMainWindow):
                     # Get true screen dimensions including scaling
                     dc = win32gui.GetDC(0)
                     dpi_x = win32print.GetDeviceCaps(dc, win32con.LOGPIXELSX)
-                    # dpi_y = win32print.GetDeviceCaps(dc, win32con.LOGPIXELSY) # Not used directly for width/height calc
                     screen_width_metric = win32api.GetSystemMetrics(0)
                     screen_height_metric = win32api.GetSystemMetrics(1)
                     win32gui.ReleaseDC(0, dc)
@@ -654,9 +661,7 @@ class ControllerWindow(QMainWindow):
                     mem_dc.DeleteDC()
                     win32gui.ReleaseDC(hdesktop, desktop_dc)
                     win32gui.DeleteObject(screenshot_bmp.GetHandle())
-                    # log.debug("Frame captured using Windows API.")
                 else:  # Fallback to Pillow's ImageGrab
-                    # log.debug("Frame captured using Pillow ImageGrab (fallback).")
                     pil_image = ImageGrab.grab(all_screens=True)
                     if pil_image is None:
                         log.error(
@@ -665,7 +670,7 @@ class ControllerWindow(QMainWindow):
                         return  # Skip sending this frame
 
                 if pil_image:
-                    # Apply image enhancements (moved from encode_image to here to be conditional)
+                    # Apply image enhancements
                     pil_image = ImageEnhance.Sharpness(pil_image).enhance(1.2)
                     pil_image = ImageEnhance.Contrast(pil_image).enhance(1.1)
 
@@ -872,6 +877,13 @@ class ControllerWindow(QMainWindow):
             log.info(f"Controller UI updated with permissions: {permissions}")
 
     def display_frame(self, frame_bytes: bytes):
+        """
+        Displays a received frame on the controller's screen.
+
+        This function is called when a frame is received from the target. It decodes the frame,
+        applies any necessary transformations, and displays it on the screen_label widget.
+        It also handles saving the frame to disk if screen recording is enabled on the controller side.
+        """
         if self.role == "controller":
             if not self.active_permissions.get("view", False):
                 self.screen_label.setText("View permission not granted by target.")
@@ -956,6 +968,9 @@ class ControllerWindow(QMainWindow):
             log.warning("display_frame called on non-controller instance.")
 
     def _get_qt_modifiers(self, event_modifiers: Qt.KeyboardModifiers) -> list[str]:
+        """
+        Gets a list of active keyboard modifiers from a Qt event.
+        """
         modifiers = []
         if event_modifiers & Qt.ShiftModifier:
             modifiers.append("shift")
@@ -968,6 +983,9 @@ class ControllerWindow(QMainWindow):
         return modifiers
 
     def _get_active_mouse_buttons(self, qt_buttons_flags: Qt.MouseButtons) -> list[str]:
+        """
+        Gets a list of active mouse buttons from Qt's mouse button flags.
+        """
         active_buttons = []
         if qt_buttons_flags & Qt.LeftButton:
             active_buttons.append("left")
@@ -982,6 +1000,9 @@ class ControllerWindow(QMainWindow):
         return active_buttons
 
     def _map_qt_mouse_button(self, qt_button: Qt.MouseButton) -> str | None:
+        """
+        Maps a Qt mouse button to a string representation.
+        """
         if qt_button == Qt.LeftButton:
             return "left"
         elif qt_button == Qt.RightButton:
@@ -995,6 +1016,9 @@ class ControllerWindow(QMainWindow):
         return None
 
     def _handle_controller_key_press(self, event: QKeyEvent):
+        """
+        Handles key press events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id
@@ -1012,6 +1036,9 @@ class ControllerWindow(QMainWindow):
             log.debug(f"Controller key press: {key_data}")
 
     def _handle_controller_key_release(self, event: QKeyEvent):
+        """
+        Handles key release events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id
@@ -1029,6 +1056,9 @@ class ControllerWindow(QMainWindow):
             log.debug(f"Controller key release: {key_data}")
 
     def _handle_controller_mouse_move(self, event: QMouseEvent):
+        """
+        Handles mouse move events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id
@@ -1082,6 +1112,9 @@ class ControllerWindow(QMainWindow):
                     log.debug(f"Mouse move data: {mouse_data}")
 
     def _handle_controller_mouse_press(self, event: QMouseEvent):
+        """
+        Handles mouse press events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id
@@ -1127,6 +1160,9 @@ class ControllerWindow(QMainWindow):
                         log.debug(f"Mouse press data: {mouse_data}")
 
     def _handle_controller_mouse_release(self, event: QMouseEvent):
+        """
+        Handles mouse release events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id
@@ -1172,6 +1208,9 @@ class ControllerWindow(QMainWindow):
                         log.debug(f"Mouse release data: {mouse_data}")
 
     def _handle_controller_wheel_event(self, event: QWheelEvent):
+        """
+        Handles mouse wheel events on the controller side.
+        """
         if (
             self.role == "controller"
             and self.session_id

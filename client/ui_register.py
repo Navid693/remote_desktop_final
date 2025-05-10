@@ -1,3 +1,5 @@
+# The `RegistrationWindow` class in the `ui_register.py` file defines a sign-up form window with
+# registration functionality and theme toggling.
 # Path: client/ui_register.py
 """
 RegistrationWindow – Sign‑up form.
@@ -5,7 +7,13 @@ RegistrationWindow – Sign‑up form.
 Signals
 -------
 register_attempt_signal(str username, str password, str confirm)
+    Emitted when the user attempts to register.
+
 toggle_theme_signal()
+    Emitted when the user toggles the theme.
+    
+back_to_login_signal()
+    Emitted when the user wants to return to the login window.
 """
 
 import logging
@@ -26,21 +34,34 @@ log = logging.getLogger(__name__)
 
 
 class RegistrationWindow(QWidget):
+    """
+    A window for user registration, including username, password, and confirm password fields.
+    It also includes theme toggling functionality and a back to login button.
+    """
     register_attempt_signal = pyqtSignal(str, str, str)
     toggle_theme_signal = pyqtSignal()
     back_to_login_signal = pyqtSignal()  # New signal for returning to login
 
     def __init__(self) -> None:
+        """
+        Initializes the RegistrationWindow, builds the UI, and sets up connections.
+        """
         super().__init__()
         self._build_ui()
 
     def closeEvent(self, event):
-        """Handle window close event by showing login window."""
+        """
+        Handles the window close event by emitting the back_to_login_signal.
+        """
         self.back_to_login_signal.emit()
         event.accept()
 
     # --------------------------------------------------
     def _build_ui(self) -> None:
+        """
+        Builds the user interface for the registration window.
+        Includes labels, input fields, buttons, and layout management.
+        """
         self.setWindowTitle("SCU Remote Desktop — Sign Up")
         self.setMinimumWidth(420)
 
@@ -178,6 +199,11 @@ class RegistrationWindow(QWidget):
 
     # --------------------------------------------------
     def _on_register(self) -> None:
+        """
+        Handles the registration button click event.
+        Validates the username, password, and confirm password fields,
+        and emits the register_attempt_signal if validation is successful.
+        """
         usr, pwd, cpwd = (
             self.user_in.text().strip(),
             self.pwd_in.text(),
@@ -197,13 +223,27 @@ class RegistrationWindow(QWidget):
         self.register_attempt_signal.emit(usr, pwd, cpwd)
 
     def _err(self, msg: str) -> bool:
+        """
+        Displays an error message in the error label.
+
+        Args:
+            msg (str): The error message to display.
+
+        Returns:
+            bool: Always returns False.
+        """
         self.err_lbl.setText(msg)
         self.err_lbl.show()
         return False
 
     # ---------- theme-icon helper ----------
     def _update_theme_icon(self, theme_name: str) -> None:
-        """Update moon / sun icon and tooltip according to current theme."""
+        """
+        Updates the theme icon and tooltip based on the current theme.
+
+        Args:
+            theme_name (str): The name of the current theme ("dark" or "light").
+        """
         if theme_name == "dark":
             emoji, tip = "🌙", "Switch to Light Mode"
         else:
@@ -212,6 +252,10 @@ class RegistrationWindow(QWidget):
         self.theme_btn.setToolTip(tip)
 
     def reset_form(self):
+        """
+        Resets the registration form by clearing the input fields,
+        hiding the error label, and enabling the registration button.
+        """
         self.user_in.clear()
         self.pwd_in.clear()
         self.cpwd_in.clear()
@@ -221,7 +265,11 @@ class RegistrationWindow(QWidget):
 
     def show_error(self, message: str, title: str = "Error"):
         """
-        Show a critical error dialog with the given message.
+        Shows a critical error dialog with the given message.
+
+        Args:
+            message (str): The error message to display.
+            title (str, optional): The title of the error dialog. Defaults to "Error".
         """
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Critical)

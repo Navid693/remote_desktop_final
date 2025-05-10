@@ -12,13 +12,27 @@ from relay_server.database import Database
 
 
 class DBHandler(logging.Handler):
-    """A logging.Handler that persists records via Database.log()."""
+    """A logging.Handler that persists records via Database.log().
+
+    This handler takes log records and persists them to a database using the Database.log() method.
+    It filters the extra attributes of the log record to keep only JSON-serializable values.
+    """
 
     def __init__(self, db: Database) -> None:
+        """Initializes the DBHandler with a database connection.
+
+        Args:
+            db: The Database object used to log messages.
+        """
         super().__init__()
         self.db = db
 
     def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+        """Emits a log record by writing it to the database.
+
+        Args:
+            record: The log record to be emitted.
+        """
         try:
             # Keep only extras that are JSON‑serialisable
             extras: Dict[str, Any] = {
@@ -32,7 +46,18 @@ class DBHandler(logging.Handler):
 
 
 def get_logger(db: Database, name: str = "relay") -> logging.Logger:
-    """Return a logger bound to *db* (adds console + DB handlers once)."""
+    """Return a logger bound to *db* (adds console + DB handlers once).
+
+    This function retrieves a logger instance and configures it with handlers for both console output and database logging.
+    It ensures that only one console handler and one DB handler (per database path) are added to the logger.
+
+    Args:
+        db: The Database object to be used for logging messages to the database.
+        name: The name of the logger. Defaults to "relay".
+
+    Returns:
+        The configured logger instance.
+    """
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 

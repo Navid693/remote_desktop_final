@@ -27,12 +27,27 @@ from client.ui_register import RegistrationWindow
 
 
 class PermissionDialog(QDialog):
+    """
+    A dialog to request permissions from the user.
+
+    This dialog displays a set of checkboxes corresponding to different permissions
+    that a controller is requesting. The user can grant or deny these permissions.
+    """
+
     def __init__(
         self,
         controller_username: str,
         requested_permissions: dict,
         parent: QWidget | None = None,
     ) -> None:
+        """
+        Initializes the PermissionDialog.
+
+        Args:
+            controller_username (str): The username of the controller requesting permissions.
+            requested_permissions (dict): A dictionary of requested permissions (e.g., {"view": True, "mouse": False}).
+            parent (QWidget | None): The parent widget of the dialog.
+        """
         super().__init__(parent)
         self.setWindowTitle(f"Access Request from {controller_username}")
         self.setModal(True)  # Ensure it's blocking
@@ -64,6 +79,12 @@ class PermissionDialog(QDialog):
         layout.addWidget(self.button_box)
 
     def get_granted_permissions(self) -> dict:
+        """
+        Returns the permissions granted by the user.
+
+        Returns:
+            dict: A dictionary of granted permissions (e.g., {"view": True, "mouse": False}).
+        """
         return {
             "view": self.view_checkbox.isChecked(),
             "mouse": self.mouse_checkbox.isChecked(),
@@ -72,6 +93,14 @@ class PermissionDialog(QDialog):
 
 
 class WindowManager(QObject):
+    """
+    Manages the application's windows and their interactions.
+
+    This class is responsible for creating, showing, hiding, and connecting signals
+    between the different windows of the application (login, registration, main controller, admin).
+    It also handles theme management and displaying messages to the user.
+    """
+
     # Signals to AppController
     login_requested = pyqtSignal(
         str, str, str, str, bool
@@ -98,6 +127,12 @@ class WindowManager(QObject):
     admin_ui_fetch_logs_requested = pyqtSignal(int, int, str, str, str)
 
     def __init__(self, theme_manager):  # theme_manager is passed from main.py
+        """
+        Initializes the WindowManager.
+
+        Args:
+            theme_manager: The theme manager instance for handling UI themes.
+        """
         super().__init__()
         self._logger = logging.getLogger(__name__)
         self.theme_manager = theme_manager
@@ -133,6 +168,12 @@ class WindowManager(QObject):
             )
 
     def set_app_controller(self, app_controller):
+        """
+        Sets the application controller.
+
+        Args:
+            app_controller: The application controller instance.
+        """
         self.app_controller = app_controller
 
     def _update_all_windows_theme_icons(self, theme_name: str):
@@ -181,6 +222,7 @@ class WindowManager(QObject):
                 )
 
     def toggle_theme(self):
+        """Toggles the application's theme between light and dark."""
         current = self.theme_manager.get_current_theme()
         next_theme = "light" if current == "dark" else "dark"
         app = QApplication.instance()
@@ -204,6 +246,12 @@ class WindowManager(QObject):
         self._logger.info(f"Theme switched to {next_theme}")
 
     def show_login_window(self, from_logout: bool = False):
+        """
+        Shows the login window.
+
+        Args:
+            from_logout (bool): Indicates whether the login window is being shown after a logout.
+        """
         self._logger.info("Transitioning to login window.")
 
         if self.main_controller_window:
@@ -244,6 +292,7 @@ class WindowManager(QObject):
             )
 
     def show_registration_window(self):
+        """Displays the registration window."""
         self._logger.info("Displaying registration window")
         self.login_window.hide()
         self.register_window.show()
@@ -251,11 +300,20 @@ class WindowManager(QObject):
         self.register_window.raise_()
 
     def close_registration_window_on_success(self):
+        """Closes the registration window after successful registration."""
         self._logger.info("Closing registration window after successful registration")
         self.register_window.reset_form()
         self.register_window.hide()
 
     def show_main_window_for_role(self, username: str, user_id: int, role: str):
+        """
+        Shows the main controller window for a given user and role.
+
+        Args:
+            username (str): The username of the logged-in user.
+            user_id (int): The user ID of the logged-in user.
+            role (str): The role of the logged-in user (e.g., "controller", "target").
+        """
         self._logger.info(
             f"Transitioning to main window for user '{username}' (ID: {user_id}) as role '{role}'."
         )
@@ -315,6 +373,7 @@ class WindowManager(QObject):
         self.show_message(
             f"Welcome, {username}! You are logged in as {role}.", "Login Successful"
         )
+
 
     def show_admin_window(self, username: str):
         """Show the admin panel."""
