@@ -93,16 +93,31 @@ class ControllerClient:
             {"target_identifier": target_identifier},
         )
 
-    def request_permission(
-        self, target_username: str, view=True, mouse=False, keyboard=False
-    ) -> None:
+    def request_permission(self, target_username: str, view=True, mouse=False, keyboard=False) -> None:
         if not self.sock:
             raise ConnectionError("Not connected")
+        if not self.session_id or not self.peer_username:
+            logger.warning("Cannot request permissions: not in an active session")
+            if self._error_callback:
+                self._error_callback(400, "Not in an active session", None)
+            return
+
+        # Extract base username without IP:port if present
+        target_base_username = target_username.split('@')[0] if '@' in target_username else target_username
+        peer_base_username = self.peer_username.split('@')[0] if '@' in self.peer_username else self.peer_username
+        
+        # Verify we're requesting permissions from our current peer
+        if target_base_username != peer_base_username:
+            logger.warning(f"Cannot request permissions: target mismatch (requested: {target_username}, current peer: {self.peer_username})")
+            if self._error_callback:
+                self._error_callback(400, "Target username mismatch", None)
+            return
+
         send_json(
             self.sock,
             PacketType.PERM_REQUEST,
             {
-                "target_username": target_username,  # Server expects this key
+                "target_username": target_username,
                 "view": view,
                 "mouse": mouse,
                 "keyboard": keyboard,

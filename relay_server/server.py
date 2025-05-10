@@ -329,6 +329,8 @@ class RelayHandler(StreamRequestHandler):
                 {"code": 403, "reason": "Only controllers can send PERM_REQUEST"},
             )
             return
+
+        # First check if controller has valid session
         if not self.client_info.session_id or not self.client_info.peer_username:
             send_json(
                 self.request,
@@ -337,16 +339,34 @@ class RelayHandler(StreamRequestHandler):
             )
             return
 
-        target_username = self.client_info.peer_username
+        target_username = self.client_info.peer_username.split('@')[0]  # Remove IP:port if present
         target_info: Optional[ClientConnection] = None
+        
         with self.server.lock:
+            # First try exact match
             target_info = self.server.active_clients.get(target_username)
+            if not target_info:
+                # Try searching with IP:port variations
+                target_info = next(
+                    (client for client in self.server.active_clients.values() 
+                     if client.username == target_username and client.role == ROLE_TARGET),
+                    None
+                )
 
         if not target_info:
             send_json(
                 self.request,
                 PacketType.ERROR,
                 {"code": 404, "reason": "Target peer disconnected"},
+            )
+            return
+
+        # Verify session match
+        if target_info.session_id != self.client_info.session_id:
+            send_json(
+                self.request,
+                PacketType.ERROR,
+                {"code": 400, "reason": "Session mismatch with target"},
             )
             return
 
