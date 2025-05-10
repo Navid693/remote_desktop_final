@@ -11,11 +11,13 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFontDatabase
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+
 class ChatBubble(QWidget):
     """
     ChatBubble: Represents a single chat message bubble.
     Handles sender, message, timestamp, alignment (self/other), theme, and RTL/LTR detection.
     """
+
     def __init__(self, sender, message, timestamp, is_self, theme):
         """
         Initialize a chat bubble.
@@ -93,11 +95,13 @@ class ChatBubble(QWidget):
 
         self.setLayout(layout)
 
+
 class ChatAreaWidget(QScrollArea):
     """
     ChatAreaWidget: A scrollable area that displays chat bubbles in a vertical layout.
     Supports dynamic theme switching, RTL/LTR, and auto-scroll to latest message.
     """
+
     def __init__(self, theme="dark", parent=None):
         """
         Initialize the chat area widget.
@@ -115,12 +119,12 @@ class ChatAreaWidget(QScrollArea):
         self.layout = QVBoxLayout(self.container)
         self.layout.addStretch()  # Stretch at the end for proper alignment
         self.setWidget(self.container)
-        
+
         # Timer for delayed scrolling to ensure rendering is complete
         self.scroll_timer = QTimer(self)
         self.scroll_timer.setSingleShot(True)
         self.scroll_timer.timeout.connect(self._do_scroll)
-        
+
     def append_message(self, sender, message, timestamp, is_self):
         """
         Add a new chat message bubble to the chat area.
@@ -136,14 +140,14 @@ class ChatAreaWidget(QScrollArea):
         self.layout.insertWidget(self.layout.count() - 1, bubble)
         # Start timer to scroll after rendering
         self.scroll_timer.start(50)  # 50ms delay
-        
+
     def _do_scroll(self):
         """
         Scroll to the latest message, ensuring content is fully rendered.
         """
         scrollbar = self.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
-        
+
         # Ensure scroll is at the bottom
         if scrollbar.value() != scrollbar.maximum():
             scrollbar.setValue(scrollbar.maximum())

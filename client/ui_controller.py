@@ -12,10 +12,10 @@ import logging
 import os
 import time
 
-from PIL import ImageGrab, ImageEnhance, Image
-from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal, QBuffer
-from PyQt5.QtGui import QIcon
+from PIL import Image, ImageEnhance, ImageGrab
+from PyQt5.QtCore import QBuffer, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import (
+    QIcon,
     QImage,
     QKeyEvent,
     QMouseEvent,
@@ -25,6 +25,7 @@ from PyQt5.QtGui import (
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -38,7 +39,6 @@ from PyQt5.QtWidgets import (
     QStatusBar,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
 )
 
 log = logging.getLogger(__name__)
@@ -216,7 +216,7 @@ class ControllerWindow(QMainWindow):
                 message = (
                     f"Recording stopped.\\n{self.recording_frame_count} JPEG frames saved in:\\n{self.recording_path}\\n\\n"
                     f"To compile into a video (e.g., output.mp4 at 10 FPS using FFmpeg, if installed, run in your terminal):\\n"
-                    f"ffmpeg -framerate 10 -i \"{os.path.join(self.recording_path, 'frame_%05d.jpg')}\" "
+                    f'ffmpeg -framerate 10 -i "{os.path.join(self.recording_path, "frame_%05d.jpg")}" '
                     f"-c:v libx264 -pix_fmt yuv420p output.mp4"
                 )
                 self.show_message(message, "Recording Stopped")

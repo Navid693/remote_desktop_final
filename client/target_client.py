@@ -11,7 +11,11 @@ from typing import (  # Provides type hinting support.
     Union,
 )
 
-from shared.protocol import PacketType, recv, send_json  # Imports custom protocol functions and packet types.
+from shared.protocol import (  # Imports custom protocol functions and packet types.
+    PacketType,
+    recv,
+    send_json,
+)
 
 logger = logging.getLogger(__name__)  # Initializes a logger for this module.
 
@@ -34,7 +38,9 @@ class TargetClient:
             username (str): The username for authentication.
             password (str): The password for authentication.
         """
-        self.sock: Optional[socket.socket] = None  # Socket for communication with the server.
+        self.sock: Optional[socket.socket] = (
+            None  # Socket for communication with the server.
+        )
         self.username: str = username  # Username of the target client.
         self.user_id: Optional[int] = None  # User ID assigned by the server.
         self._chat_callback: Optional[Callable[[str, str, str], None]] = (
@@ -53,19 +59,25 @@ class TargetClient:
             None  # Callback for handling incoming input events.
         )
 
-        self.session_id: Optional[int] = None  # Session ID for the remote control session.
+        self.session_id: Optional[int] = (
+            None  # Session ID for the remote control session.
+        )
         self.peer_username: Optional[str] = (
             None  # Username of the controller connected to this target.
         )
 
         try:
-            self.sock = socket.create_connection((host, port))  # Creates a socket connection to the server.
+            self.sock = socket.create_connection(
+                (host, port)
+            )  # Creates a socket connection to the server.
             send_json(
                 self.sock,
                 PacketType.AUTH_REQ,
                 {"username": username, "password": password, "role": "target"},
             )  # Sends authentication request to the server.
-            p, auth_data = recv(self.sock)  # Receives authentication response from the server.
+            p, auth_data = recv(
+                self.sock
+            )  # Receives authentication response from the server.
             if p is not PacketType.AUTH_OK:  # Checks if authentication was successful.
                 reason = (
                     auth_data.get("reason", "No reason provided")
@@ -74,7 +86,9 @@ class TargetClient:
                 )
                 raise AssertionError(f"Auth failed: {reason}")
 
-            self.user_id = auth_data.get("user_id")  # Retrieves the user ID from the authentication data.
+            self.user_id = auth_data.get(
+                "user_id"
+            )  # Retrieves the user ID from the authentication data.
             # self.username already set, server confirms it via auth_data.get("username")
 
             threading.Thread(
@@ -104,7 +118,7 @@ class TargetClient:
             timestamp = datetime.datetime.now().isoformat()
         if not sender:
             sender = self.username
-            
+
         try:
             send_json(
                 self.sock,
@@ -113,7 +127,7 @@ class TargetClient:
                     "text": text,
                     "timestamp": timestamp,
                     "sender": sender,
-                }
+                },
             )
         except Exception as e:
             logger.error(f"Error sending chat message: {e}")
@@ -192,7 +206,9 @@ class TargetClient:
                 logger.info(f"Reader {self.username}: Socket is None, exiting.")
                 break
             try:
-                ptype, data = recv(self.sock)  # Receives packet type and data from the server.
+                ptype, data = recv(
+                    self.sock
+                )  # Receives packet type and data from the server.
                 self._handle_packet(ptype, data)  # Handles the received packet.
                 if ptype == PacketType.DISCONNECT:  # If server confirms disconnect
                     logger.info(
@@ -353,7 +369,7 @@ class TargetClient:
         """Cleanly disconnect from the server."""
         logger.info(f"Client {self.username} disconnect method called.")
         current_sock = self.sock
-        if (current_sock):
+        if current_sock:
             self.sock = None
             try:
                 send_json(current_sock, PacketType.DISCONNECT, {})

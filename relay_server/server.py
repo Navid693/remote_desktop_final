@@ -1,8 +1,6 @@
-# remote_desktop_final/relay_server/server.py
 from __future__ import annotations
 
 import datetime
-import logging
 import socket
 import threading
 from dataclasses import dataclass, field
@@ -443,9 +441,7 @@ class RelayHandler(StreamRequestHandler):
         sender_username = self.client_info.username
 
         # Log and store chat message in DB
-        db.add_chat_msg(
-            self.client_info.session_id, self.client_info.user_id, text
-        )
+        db.add_chat_msg(self.client_info.session_id, self.client_info.user_id, text)
         logger.info(
             f"[CHAT] Session {self.client_info.session_id} | {sender_username}: {text}"
         )
@@ -463,7 +459,9 @@ class RelayHandler(StreamRequestHandler):
                 }
                 send_json(peer_info.sock, PacketType.CHAT, chat_payload)
             except Exception as e:
-                logger.error(f"Failed to deliver chat message to {peer_info.username}: {e}")
+                logger.error(
+                    f"Failed to deliver chat message to {peer_info.username}: {e}"
+                )
                 send_json(
                     self.request,
                     PacketType.ERROR,
@@ -479,43 +477,97 @@ class RelayHandler(StreamRequestHandler):
                 {"code": 404, "reason": "Peer not found or not in same session"},
             )
 
+    # In RelayHandler class
+
     def _handle_packet_frame(self, data: bytes):
         """Handles FRAME data from target, forwards to controller."""
+        if not self.client_info:  # Should ideally not happen post-auth
+            logger.error("[FRAME_REJECTED] Received FRAME but client_info is not set.")
+            return
+
         if self.client_info.role != ROLE_TARGET:
             logger.warning(
-                f"[FRAME_REJECTED] User {self.client_info.username} (not target) sent FRAME."
+                f"[FRAME_REJECTED] User {self.client_info.username} (Role: {self.client_info.role}, Addr: {self.client_info.addr}) "
+                f"sent FRAME, but is not a Target. Packet dropped."
             )
-            return  # Silently drop or send error
+            return
+
         if not self.client_info.session_id or not self.client_info.peer_username:
             logger.warning(
-                f"[FRAME_REJECTED] User {self.client_info.username} (target) sent FRAME but not in session."
+                f"[FRAME_REJECTED] Target {self.client_info.username} (Addr: {self.client_info.addr}) "
+                f"sent FRAME but is not in an active session (SessionID: {self.client_info.session_id}, Peer: {self.client_info.peer_username}). Packet dropped."
             )
             return
 
         controller_username = self.client_info.peer_username
+        # At this point, controller_username should be the simple username of the controller, e.g., "navid"
+
         controller_info: Optional[ClientConnection] = None
-        with self.server.lock:
+        with self.server.lock:  # Ensure thread-safe access
             controller_info = self.server.active_clients.get(controller_username)
 
-        if controller_info and controller_info.granted_permissions.get("view"):
+        if not controller_info:
+            # This is likely where your current error occurs.
+            # The log below will show the exact 'controller_username' value used for the failed lookup.
+            active_client_keys = list(
+                self.server.active_clients.keys()
+            )  # For debugging
+            logger.warning(
+                f"[FRAME_FAIL] Controller '{controller_username}' (peer of Target '{self.client_info.username}' from {self.client_info.addr}) "
+                f"not found in active_clients. Frame not forwarded. Session ID: {self.client_info.session_id}. "
+                f"Current active_clients keys: {active_client_keys}"
+            )
+            # Notify the target that its peer is gone
             try:
-                from shared.protocol import (
-                    send_bytes as send_raw_bytes,  # Explicit import if needed
+                send_json(
+                    self.request,
+                    PacketType.ERROR,
+                    {
+                        "code": 404,
+                        "reason": f"Controller peer '{controller_username}' disconnected or not found.",
+                    },
                 )
-
-                send_raw_bytes(controller_info.sock, PacketType.FRAME, data)
-
             except Exception as e:
                 logger.error(
-                    f"Error forwarding FRAME from {self.client_info.username} to {controller_username}: {e}"
+                    f"Failed to send ERROR to target {self.client_info.username} about missing controller: {e}"
                 )
-        elif controller_info and not controller_info.granted_permissions.get("view"):
+
+            # Consider cleaning up the target's session state more formally here if its peer is definitively gone
+            # E.g., by calling a method that mimics parts of finish() for session cleanup.
+            return
+
+        if controller_info.role != ROLE_CONTROLLER:
             logger.warning(
-                f"[FRAME_DENIED] Controller {controller_username} does not have view permission for frames from {self.client_info.username}."
+                f"[FRAME_FAIL] Peer '{controller_username}' of Target '{self.client_info.username}' is not a Controller (Role: {controller_info.role}). Frame not forwarded."
             )
-        elif not controller_info:
+            return
+
+        if controller_info.session_id != self.client_info.session_id:
             logger.warning(
-                f"[FRAME_FAIL] Controller {controller_username} not found for frame from {self.client_info.username}."
+                f"[FRAME_FAIL] Session ID mismatch for Target '{self.client_info.username}' (Session {self.client_info.session_id}) "
+                f"and its peer Controller '{controller_username}' (Session {controller_info.session_id}). Frame not forwarded."
+            )
+            return
+
+        if controller_info.granted_permissions.get("view"):
+            try:
+                from shared.protocol import send_bytes as send_raw_bytes
+
+                send_raw_bytes(controller_info.sock, PacketType.FRAME, data)
+                # Log successful forwarding (consider making this DEBUG level to reduce noise in production)
+                logger.debug(  # Changed to debug for successful frame forwarding
+                    f"[FRAME_FORWARDED] Frame from Target {self.client_info.username} (Session {self.client_info.session_id}) "
+                    f"to Controller {controller_username} (Session {controller_info.session_id}, Addr: {controller_info.addr}). Size: {len(data)} bytes."
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error forwarding FRAME from Target {self.client_info.username} to Controller {controller_username} (Addr: {controller_info.addr}): {e}"
+                )
+                # This could indicate the controller's socket is broken.
+                # The controller's own handler should eventually detect this and call its finish().
+        else:
+            logger.warning(
+                f"[FRAME_DENIED] Controller {controller_username} does not have 'view' permission for frames from Target {self.client_info.username}."
             )
 
     def _handle_packet_input(self, data: dict):  # Assuming INPUT data is JSON
@@ -593,56 +645,73 @@ class RelayHandler(StreamRequestHandler):
                     del self.server.active_clients[self.client_info.username]
 
                 # If in a session, notify peer and clean up session
+                # In RelayHandler class, inside finish method
+
+                # ... (existing code before peer_info lookup) ...
                 if self.client_info.session_id and self.client_info.peer_username:
-                    peer_info = self.server.active_clients.get(
+                    peer_username_simple = (
                         self.client_info.peer_username
-                    )
+                    )  # Should be simple username
+                    peer_info = self.server.active_clients.get(
+                        peer_username_simple
+                    )  # Lookup by simple username
+
                     if (
                         peer_info
                         and peer_info.session_id == self.client_info.session_id
                     ):
                         logger.info(
-                            f"[SESSION_PEER_NOTIFY] Notifying {peer_info.username} of {self.client_info.username}'s disconnect from session {self.client_info.session_id}."
+                            f"[SESSION_PEER_NOTIFY] Notifying {peer_info.username} (Addr: {peer_info.addr}) "
+                            f"of {self.client_info.username}'s disconnect from session {self.client_info.session_id}."
                         )
                         try:
-                            # Send a specific "peer disconnected" message or just ERROR
                             send_json(
                                 peer_info.sock,
                                 PacketType.ERROR,
                                 {
                                     "code": 410,  # Gone
                                     "reason": f"Peer {self.client_info.username} disconnected from session.",
-                                    "peer_username": self.client_info.username,
+                                    "peer_username": self.client_info.username,  # The one who disconnected
                                 },
                             )
                         except Exception as e:
                             logger.warning(
-                                f"Failed to notify peer {peer_info.username} of disconnect: {e}"
+                                f"Failed to notify peer {peer_info.username} of {self.client_info.username}'s disconnect: {e}"
                             )
                         # Clean peer's session details
                         peer_info.session_id = None
                         peer_info.peer_username = None
-                        peer_info.granted_permissions = {
+                        peer_info.granted_permissions = {  # Reset permissions
                             "view": False,
                             "mouse": False,
                             "keyboard": False,
-                        }  # Reset permissions
+                        }
+                    elif peer_info:  # Peer exists but not in the same session (shouldn't happen if state is consistent)
+                        logger.warning(
+                            f"[SESSION_CLEANUP_WARN] Peer {peer_info.username} found, but its session ID ({peer_info.session_id}) "
+                            f"did not match disconnecting client {self.client_info.username}'s session ID ({self.client_info.session_id})."
+                        )
+                    # else: Peer not found in active_clients, already disconnected or never properly connected
 
+                    # Always try to close the DB session if this client was part of one
                     db.close_session(
                         self.client_info.session_id, status="closed_by_disconnect"
                     )
                     logger.info(
-                        f"[SESSION_END] Session {self.client_info.session_id} ended due to {self.client_info.username} disconnect."
+                        f"[SESSION_END] Session {self.client_info.session_id} involving {self.client_info.username} was closed in DB."
                     )
-                    db.log(
+                    db.log(  # Log this specific session end
                         "INFO",
-                        "SESSION_END",
+                        "SESSION_END_DISCONNECT",  # More specific event
                         {
                             "session_id": self.client_info.session_id,
-                            "reason": f"disconnect by {self.client_info.username}",
+                            "disconnected_user": self.client_info.username,
+                            "disconnected_role": self.client_info.role,
+                            "peer_user_at_disconnect": peer_username_simple,  # Log who the peer was supposed to be
                         },
                         session_id=self.client_info.session_id,
                     )
+                # ... (rest of the finish method) ...
 
             # Update user status in DB
             db.set_user_status(self.client_info.username, "offline")

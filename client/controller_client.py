@@ -6,6 +6,7 @@ managing the client-side connection and communication with the remote desktop se
 from the controller's perspective. It handles authentication, connection requests,
 permission management, and data transfer for remote desktop control.
 """
+
 import datetime
 import logging
 import socket

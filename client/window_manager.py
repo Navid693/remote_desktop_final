@@ -374,7 +374,6 @@ class WindowManager(QObject):
             f"Welcome, {username}! You are logged in as {role}.", "Login Successful"
         )
 
-
     def show_admin_window(self, username: str):
         """Show the admin panel."""
         self._logger.info(f"Transitioning to admin window for user '{username}'.")

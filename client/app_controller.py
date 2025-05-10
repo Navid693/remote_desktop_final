@@ -18,11 +18,14 @@ from urllib.parse import urlparse
 # Try to import Windows-specific APIs for screen dimension detection
 try:
     from win32api import GetSystemMetrics
+
     WINDOWS_SPECIFIC_APIS_AVAILABLE = True
 except ImportError:
-    GetSystemMetrics = None # type: ignore
+    GetSystemMetrics = None  # type: ignore
     WINDOWS_SPECIFIC_APIS_AVAILABLE = False
-    logging.warning("win32api not found. Screen dimension detection via GetSystemMetrics will be unavailable.")
+    logging.warning(
+        "win32api not found. Screen dimension detection via GetSystemMetrics will be unavailable."
+    )
 
 from PyQt5.QtCore import (
     QCoreApplication,
@@ -53,10 +56,12 @@ except ImportError:
 
 logger = logging.getLogger("AppController")
 
+
 class AppSignals(QObject):
     """
     Defines all Qt signals used by AppController to communicate with the UI and other components.
     """
+
     message_received = pyqtSignal(str, str, str)
     chat_error = pyqtSignal(str)
 
@@ -82,6 +87,7 @@ class AppSignals(QObject):
     admin_logs_fetched = pyqtSignal(list)
     admin_user_operation_complete = pyqtSignal(bool, str)
     admin_log_operation_complete = pyqtSignal(bool, str)
+
 
 class AppController:
     """
@@ -237,7 +243,11 @@ class AppController:
             self.current_username = username
             self.current_user_id = -1
             self.current_role = "admin"
-            self.db.log("INFO", "ADMIN_LOGIN_SUCCESS", {"username": username, "user_id": -1, "role": "admin"})
+            self.db.log(
+                "INFO",
+                "ADMIN_LOGIN_SUCCESS",
+                {"username": username, "user_id": -1, "role": "admin"},
+            )
             logger.info(f"Admin user '{username}' logged in successfully.")
             self.signals.admin_login_success.emit(username)
             self.wm.connect_admin_window_signals(self)
@@ -284,10 +294,14 @@ class AppController:
                                 f"Target screen dimensions via Pillow: {self.target_screen_dimensions}"
                             )
                         else:
-                            logger.warning("Pillow ImageGrab.grab() returned None. Using fallback dimensions.")
+                            logger.warning(
+                                "Pillow ImageGrab.grab() returned None. Using fallback dimensions."
+                            )
                             self.target_screen_dimensions = (1920, 1080)
                     except Exception as e:
-                        logger.error(f"Could not get screen dimensions via Pillow: {e}. Using fallback dimensions.")
+                        logger.error(
+                            f"Could not get screen dimensions via Pillow: {e}. Using fallback dimensions."
+                        )
                         self.target_screen_dimensions = (1920, 1080)
             else:
                 raise ValueError("Invalid role for client initialization")
@@ -328,7 +342,9 @@ class AppController:
             self.wm.show_login_error(f"Authentication failed: {e}")
             logger.error(f"Auth failed for user '{username}': {e}")
         except Exception as e:
-            logger.exception(f"Network or other error during login for user '{username}' as '{role}'")
+            logger.exception(
+                f"Network or other error during login for user '{username}' as '{role}'"
+            )
             self.wm.show_login_error(f"An unexpected error occurred: {e}")
 
     def _parse_backend_url(self, backend_url: str) -> tuple[str | None, int | None]:
@@ -372,15 +388,19 @@ class AppController:
         logged_out_user_id = self.current_user_id
         logged_out_role = self.current_role
 
-        logger.info(f"Logout process started for user '{logged_out_username}' (ID: {logged_out_user_id}, Role: {logged_out_role}).")
+        logger.info(
+            f"Logout process started for user '{logged_out_username}' (ID: {logged_out_user_id}, Role: {logged_out_role})."
+        )
 
         if self.client:
             try:
                 logger.info(f"Disconnecting client for user '{logged_out_username}'.")
                 self.client.disconnect()
             except Exception:
-                logger.exception(f"Error during client disconnect on logout for '{logged_out_username}'.")
-        
+                logger.exception(
+                    f"Error during client disconnect on logout for '{logged_out_username}'."
+                )
+
         self.client = None
         self.current_username = None
         self.current_user_id = None
@@ -390,9 +410,15 @@ class AppController:
         self.granted_permissions = {}
         self.target_screen_dimensions = None
 
-        if logged_out_username: # Only log if a user was actually logged in
+        if logged_out_username:  # Only log if a user was actually logged in
             self.db.log(
-                "INFO", "USER_LOGOUT", {"username": logged_out_username, "user_id": logged_out_user_id, "role": logged_out_role}
+                "INFO",
+                "USER_LOGOUT",
+                {
+                    "username": logged_out_username,
+                    "user_id": logged_out_user_id,
+                    "role": logged_out_role,
+                },
             )
             logger.info(f"User '{logged_out_username}' logged out successfully.")
         else:
@@ -508,8 +534,10 @@ class AppController:
             if not input_data or "type" not in input_data:
                 logger.warning("Invalid input event: missing type")
                 return
-                
-            if self.granted_permissions.get("mouse") or self.granted_permissions.get("keyboard"):
+
+            if self.granted_permissions.get("mouse") or self.granted_permissions.get(
+                "keyboard"
+            ):
                 try:
                     self.client.send_input(input_data)
                 except ConnectionError as e:
@@ -585,24 +613,32 @@ class AppController:
         """
         self.session_id = session_id
         self.peer_username = peer_username
-        screen_width, screen_height = 1920, 1080 # Default/fallback
+        screen_width, screen_height = 1920, 1080  # Default/fallback
 
         # Save actual monitor dimensions for accurate mouse mapping
-        if GetSystemMetrics: # Check if win32api was imported
+        if GetSystemMetrics:  # Check if win32api was imported
             try:
                 screen_width = GetSystemMetrics(0)
                 screen_height = GetSystemMetrics(1)
                 self.target_screen_dimensions = (screen_width, screen_height)
-                logger.info(f"Target screen dimensions (via GetSystemMetrics): {screen_width}x{screen_height}")
+                logger.info(
+                    f"Target screen dimensions (via GetSystemMetrics): {screen_width}x{screen_height}"
+                )
             except Exception as e:
-                logger.warning(f"Failed to get screen dimensions via GetSystemMetrics: {e}. Using fallback {screen_width}x{screen_height}.")
+                logger.warning(
+                    f"Failed to get screen dimensions via GetSystemMetrics: {e}. Using fallback {screen_width}x{screen_height}."
+                )
                 self.target_screen_dimensions = (screen_width, screen_height)
-        elif self.target_screen_dimensions: # Use dimensions from Pillow if available
-             screen_width, screen_height = self.target_screen_dimensions
-             logger.info(f"Using Pillow-derived screen dimensions: {screen_width}x{screen_height}")
-        else: # Absolute fallback
+        elif self.target_screen_dimensions:  # Use dimensions from Pillow if available
+            screen_width, screen_height = self.target_screen_dimensions
+            logger.info(
+                f"Using Pillow-derived screen dimensions: {screen_width}x{screen_height}"
+            )
+        else:  # Absolute fallback
             self.target_screen_dimensions = (screen_width, screen_height)
-            logger.warning(f"Using fallback screen dimensions: {screen_width}x{screen_height} for target.")
+            logger.warning(
+                f"Using fallback screen dimensions: {screen_width}x{screen_height} for target."
+            )
 
         logger.info(
             f"Target connected with controller {peer_username} in session {session_id} "
@@ -794,33 +830,50 @@ class AppController:
 
         try:
             # Create controllers only once if not already created
-            if not hasattr(self, '_mouse_controller'):
+            if not hasattr(self, "_mouse_controller"):
                 self._mouse_controller = mouse.Controller()
-            if not hasattr(self, '_keyboard_controller'):    
+            if not hasattr(self, "_keyboard_controller"):
                 self._keyboard_controller = keyboard.Controller()
 
             # Get screen dimensions for proper mouse positioning
-            screen_width, screen_height = 1920, 1080 # Default/fallback
+            screen_width, screen_height = 1920, 1080  # Default/fallback
 
             if self.target_screen_dimensions:
                 screen_width, screen_height = self.target_screen_dimensions
-            elif GetSystemMetrics: # Check if win32api was imported
+            elif GetSystemMetrics:  # Check if win32api was imported
                 try:
                     screen_width_gs = GetSystemMetrics(0)
                     screen_height_gs = GetSystemMetrics(1)
                     if screen_width_gs > 0 and screen_height_gs > 0:
                         screen_width, screen_height = screen_width_gs, screen_height_gs
                         self.target_screen_dimensions = (screen_width, screen_height)
-                        logger.info(f"Updated screen dimensions via GetSystemMetrics for input handling: {screen_width}x{screen_height}")
+                        logger.info(
+                            f"Updated screen dimensions via GetSystemMetrics for input handling: {screen_width}x{screen_height}"
+                        )
                     else:
-                         logger.warning(f"GetSystemMetrics returned invalid dimensions ({screen_width_gs}x{screen_height_gs}). Using fallback.")
-                         self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
+                        logger.warning(
+                            f"GetSystemMetrics returned invalid dimensions ({screen_width_gs}x{screen_height_gs}). Using fallback."
+                        )
+                        self.target_screen_dimensions = (
+                            screen_width,
+                            screen_height,
+                        )  # Store fallback
                 except Exception as e:
-                    logger.error(f"Failed to get screen dimensions via GetSystemMetrics during input handling: {e}. Using fallback.")
-                    self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
+                    logger.error(
+                        f"Failed to get screen dimensions via GetSystemMetrics during input handling: {e}. Using fallback."
+                    )
+                    self.target_screen_dimensions = (
+                        screen_width,
+                        screen_height,
+                    )  # Store fallback
             else:
-                logger.warning(f"Using fallback screen dimensions for input handling: {screen_width}x{screen_height}")
-                self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
+                logger.warning(
+                    f"Using fallback screen dimensions for input handling: {screen_width}x{screen_height}"
+                )
+                self.target_screen_dimensions = (
+                    screen_width,
+                    screen_height,
+                )  # Store fallback
 
             # Handle mouse events
             if event_type == "mousemove":
@@ -832,7 +885,7 @@ class AppController:
                     target_y = int(norm_y * screen_height)
                     logger.debug(f"Moving mouse to ({target_x}, {target_y})")
                     self._mouse_controller.position = (target_x, target_y)
-                    
+
                     # Handle any active buttons during drag
                     active_buttons = input_event_data.get("buttons", [])
                     for button_name in active_buttons:
@@ -845,17 +898,19 @@ class AppController:
                 button_name = input_event_data.get("button")
                 norm_x = input_event_data.get("norm_x")
                 norm_y = input_event_data.get("norm_y")
-                
+
                 if button_name and norm_x is not None and norm_y is not None:
                     # Move mouse to click position first
                     target_x = int(norm_x * screen_width)
                     target_y = int(norm_y * screen_height)
                     self._mouse_controller.position = (target_x, target_y)
-                    
+
                     # Then perform click
                     button = getattr(mouse.Button, button_name, None)
                     if button:
-                        logger.debug(f"Mouse button press: {button_name} at ({target_x}, {target_y})")
+                        logger.debug(
+                            f"Mouse button press: {button_name} at ({target_x}, {target_y})"
+                        )
                         self._mouse_controller.press(button)
                     else:
                         logger.warning(f"Unknown mouse button: {button_name}")
@@ -908,7 +963,9 @@ class AppController:
                             self._keyboard_controller.press(text)
                         else:
                             self._keyboard_controller.release(text)
-                        logger.debug(f"Handled printable key: {text} ({'press' if is_press else 'release'})")
+                        logger.debug(
+                            f"Handled printable key: {text} ({'press' if is_press else 'release'})"
+                        )
                         return
 
                     # Handle special keys
@@ -955,7 +1012,9 @@ class AppController:
                             self._keyboard_controller.press(key)
                         else:
                             self._keyboard_controller.release(key)
-                        logger.debug(f"Handled special key: {key} ({'press' if is_press else 'release'})")
+                        logger.debug(
+                            f"Handled special key: {key} ({'press' if is_press else 'release'})"
+                        )
                         return
 
                     # Handle any remaining non-printable characters
@@ -968,7 +1027,9 @@ class AppController:
                             logger.debug(f"Handled non-printable text: {text}")
                             return
                         except Exception as e:
-                            logger.error(f"Error handling non-printable text '{text}': {e}")
+                            logger.error(
+                                f"Error handling non-printable text '{text}': {e}"
+                            )
                             return
 
                     logger.warning(f"Unhandled key code: {qt_key_code}, text: {text}")
@@ -1081,14 +1142,16 @@ class AppController:
             text = event_data.get("text", "")
             modifiers = event_data.get("modifiers", [])
             is_auto_repeat = event_data.get("is_auto_repeat", False)
-            
+
             # Skip auto-repeat events to prevent duplicate key presses
             if is_auto_repeat:
                 return
 
             # Handle regular character keys
             if text and len(text) == 1 and text.isprintable():
-                logger.debug(f"Handling printable key: {text} ({'press' if press else 'release'})")
+                logger.debug(
+                    f"Handling printable key: {text} ({'press' if press else 'release'})"
+                )
                 if press:
                     kb_controller.press(text)
                 else:
@@ -1135,7 +1198,9 @@ class AppController:
 
             if qt_key_code in special_keys:
                 key = special_keys[qt_key_code]
-                logger.debug(f"Handling special key: {key} ({'press' if press else 'release'})")
+                logger.debug(
+                    f"Handling special key: {key} ({'press' if press else 'release'})"
+                )
                 try:
                     if press:
                         kb_controller.press(key)
@@ -1157,7 +1222,7 @@ class AppController:
                 return
 
             logger.debug(f"Unhandled key code: {qt_key_code}, text: {text}")
-            
+
         except Exception as e:
             logger.exception(f"Error in key event handler: {e}")
 

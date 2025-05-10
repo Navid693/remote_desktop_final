@@ -11,7 +11,7 @@ register_attempt_signal(str username, str password, str confirm)
 
 toggle_theme_signal()
     Emitted when the user toggles the theme.
-    
+
 back_to_login_signal()
     Emitted when the user wants to return to the login window.
 """
@@ -38,6 +38,7 @@ class RegistrationWindow(QWidget):
     A window for user registration, including username, password, and confirm password fields.
     It also includes theme toggling functionality and a back to login button.
     """
+
     register_attempt_signal = pyqtSignal(str, str, str)
     toggle_theme_signal = pyqtSignal()
     back_to_login_signal = pyqtSignal()  # New signal for returning to login

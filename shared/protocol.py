@@ -162,7 +162,7 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
     if img.mode != "RGB":
         img = img.convert("RGB")
 
-    img = ImageOps.autocontrast(img, cutoff=0) # Apply basic contrast enhancement
+    img = ImageOps.autocontrast(img, cutoff=0)  # Apply basic contrast enhancement
 
     if scale != 100:
         w, h = img.size
@@ -171,9 +171,8 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
         try:
             # LANCZOS is high quality but can be slower. For performance, consider BILINEAR or BICUBIC.
             img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        except AttributeError: # Older Pillow versions might use Image.LANCZOS
+        except AttributeError:  # Older Pillow versions might use Image.LANCZOS
             img = img.resize((new_w, new_h), Image.LANCZOS)
-
 
     buf = io.BytesIO()
     jpeg_options = {
@@ -185,7 +184,7 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
     # otherwise let Pillow use defaults (often 4:2:0 or 4:2:2) for better compression.
     if quality >= 95:
         jpeg_options["subsampling"] = 0
-    
+
     try:
         img.save(buf, **jpeg_options)
     except Exception as e:
@@ -193,15 +192,17 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
         # Fallback or re-raise, depending on how critical this is.
         # For now, let's re-raise if we can't encode.
         raise IOError(f"JPEG encoding failed: {e}") from e
-        
+
     data = buf.getvalue()
-    
+
     # zlib compression, level 1 for speed.
     # Higher levels (e.g., 6) offer better compression but are slower.
     compressed_data = zlib.compress(data, level=1)
 
-    if len(compressed_data) > MAX_PACKET_SIZE: # Check final compressed size
-        logger.warning(f"Encoded image ({len(compressed_data)} bytes) exceeds MAX_PACKET_SIZE ({MAX_PACKET_SIZE} bytes). Consider reducing quality/scale.")
+    if len(compressed_data) > MAX_PACKET_SIZE:  # Check final compressed size
+        logger.warning(
+            f"Encoded image ({len(compressed_data)} bytes) exceeds MAX_PACKET_SIZE ({MAX_PACKET_SIZE} bytes). Consider reducing quality/scale."
+        )
         # Depending on policy, could raise ValueError or try to further reduce quality/send placeholder
         # For now, just log a warning. The send_bytes/send_json will raise ValueError if it's still too large.
 
@@ -210,7 +211,7 @@ def encode_image(img: Image.Image, quality: int = 100, scale: int = 100) -> byte
 
 def decode_image(data: bytes) -> Image.Image:
     """Decompress bytes back to PIL Image.
-    
+
     Args:
         data: Compressed image bytes from encode_image()
 
@@ -219,11 +220,11 @@ def decode_image(data: bytes) -> Image.Image:
     """
     decompressed = zlib.decompress(data)
     img = Image.open(io.BytesIO(decompressed))
-    
+
     # Force RGB mode and apply minimal enhancements
     if img.mode != "RGB":
         img = img.convert("RGB")
-    
+
     return ImageOps.autocontrast(img, cutoff=0)
 
 
