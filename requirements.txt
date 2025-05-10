@@ -1,4 +1,4 @@
-PyQt5==5.15.11
-Pillow==11.2.1
-pynput==1.8.1
-pywin32==306; sys_platform == 'win32'
+PyQt5>=5.15.13
+Pillow>=11.3.0
+pynput>=1.8.4
+pywin32>=309; sys_platform == 'win32'
