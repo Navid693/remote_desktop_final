@@ -12,20 +12,8 @@ with the backend logic, manages signals, and handles communication with the rela
 import datetime
 import logging
 import socket
-from typing import Optional
+from typing import Any, Dict, Union, Optional
 from urllib.parse import urlparse
-
-# Try to import Windows-specific APIs for screen dimension detection
-try:
-    from win32api import GetSystemMetrics
-
-    WINDOWS_SPECIFIC_APIS_AVAILABLE = True
-except ImportError:
-    GetSystemMetrics = None  # type: ignore
-    WINDOWS_SPECIFIC_APIS_AVAILABLE = False
-    logging.warning(
-        "win32api not found. Screen dimension detection via GetSystemMetrics will be unavailable."
-    )
 
 from PyQt5.QtCore import (
     QCoreApplication,
@@ -35,6 +23,8 @@ from PyQt5.QtCore import (
     QThread,
     pyqtSignal,
 )
+from pynput import keyboard, mouse
+from win32api import GetSystemMetrics
 
 from client.controller_client import ControllerClient
 from client.target_client import TargetClient
@@ -42,19 +32,8 @@ from relay_server.database import (
     Database,
 )
 
-# Try to import Pillow and pynput for screen capture and input control
-try:
-    from PIL import ImageGrab
-    from pynput import keyboard, mouse
-
-    PYNPUT_AVAILABLE = True
-except ImportError:
-    PYNPUT_AVAILABLE = False
-    logging.warning(
-        "pynput or Pillow not found. Remote input control and screen scaling will not work."
-    )
-
 logger = logging.getLogger("AppController")
+PYNPUT_AVAILABLE = True
 
 
 class AppSignals(QObject):
@@ -795,7 +774,7 @@ class AppController:
             ):  # Only release modifiers if we are the target machine
                 self._release_stuck_modifiers()
 
-            if self.peer_username:  # Emit signal if peer_username was set
+            if self.peer_username: # Emit signal if peer_username was set
                 self.signals.peer_disconnected.emit(self.peer_username)
             self.session_id = None
             self.peer_username = None
@@ -817,331 +796,220 @@ class AppController:
     def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> tuple:
         """
         Convert Qt modifier key names to pynput modifier keys.
-
+        
         Args:
             event_modifiers_list: List of modifier key names.
-
+            
         Returns:
             Tuple of pynput modifier keys.
         """
         modifiers = set()
-        for mod in event_modifiers_list:
-            if mod == "shift":
-                modifiers.add(keyboard.Key.shift)
-            elif mod == "ctrl":
-                modifiers.add(keyboard.Key.ctrl)
-            elif mod == "alt":
-                modifiers.add(keyboard.Key.alt)
-            elif mod == "meta":
-                modifiers.add(keyboard.Key.cmd)
+        try:
+            for mod in event_modifiers_list:
+                if mod.lower() == "shift":
+                    modifiers.add(keyboard.Key.shift)
+                elif mod.lower() == "ctrl" or mod.lower() == "control":
+                    modifiers.add(keyboard.Key.ctrl)
+                elif mod.lower() == "alt":
+                    modifiers.add(keyboard.Key.alt)
+                elif mod.lower() == "meta" or mod.lower() == "super" or mod.lower() == "win":
+                    modifiers.add(keyboard.Key.cmd)
+        except Exception as e:
+            logger.error(f"Error processing modifiers: {e}")
         return tuple(modifiers)
 
     def _handle_input_data(self, input_event_data: dict):
-            """
-            Handle incoming input events from the controller (target role).
+        """Handle incoming input events from controller"""
+        if not PYNPUT_AVAILABLE:
+            logger.warning("pynput not available - cannot handle input events")
+            return
 
-            Args:
-                input_event_data: The input event data dictionary.
-            """
-            if not PYNPUT_AVAILABLE:
-                logger.warning("pynput not available - cannot handle input events")
-                return
+        if not input_event_data:
+            logger.warning("Received empty input event data")
+            return
 
-            if not input_event_data:
-                logger.warning("Received empty input event data")
-                return
+        event_type = input_event_data.get("type")
+        if not event_type:
+            logger.warning(f"Missing event type in input data: {input_event_data}")
+            return
 
-            try:
-                from pynput.keyboard import Key as PKey
-                from pynput.mouse import Button as MButton
+        try:
+            # Create controllers only once if not already created
+            if not hasattr(self, '_mouse_controller'):
+                self._mouse_controller = mouse.Controller()
+            if not hasattr(self, '_keyboard_controller'):    
+                self._keyboard_controller = keyboard.Controller()
 
-                if not hasattr(self, "_mouse_controller"):
-                    self._mouse_controller = mouse.Controller()
-                if not hasattr(self, "_keyboard_controller"):
-                    self._keyboard_controller = keyboard.Controller()
+            # Get screen dimensions for proper mouse positioning
+            screen_width, screen_height = self.target_screen_dimensions or (None, None)
+            if not all((screen_width, screen_height)):
+                try:
+                    screen_width = GetSystemMetrics(0)
+                    screen_height = GetSystemMetrics(1)
+                    self.target_screen_dimensions = (screen_width, screen_height)
+                    logger.info(f"Updated screen dimensions: {screen_width}x{screen_height}")
+                except Exception as e:
+                    logger.error(f"Failed to get screen dimensions: {e}")
+                    return
 
-                event_type = input_event_data.get("type")
-                qt_key_code = input_event_data.get("key_code")
-                text = input_event_data.get("text", "")
-                is_auto_repeat = input_event_data.get("is_auto_repeat", False)
-
-                screen_width, screen_height = self.target_screen_dimensions or (1920, 1080)
-
-                # Ensure valid screen dimensions
-                if not screen_width or not screen_height:
-                    screen_width, screen_height = 1920, 1080
-
-                # --- Mouse events ---
-                if event_type == "mousemove":
+            if event_type == "mousemove":
+                try:
                     norm_x = input_event_data.get("norm_x")
                     norm_y = input_event_data.get("norm_y")
                     if norm_x is not None and norm_y is not None:
-                        self._mouse_controller.position = (
-                            int(norm_x * screen_width),
-                            int(norm_y * screen_height),
-                        )
+                        target_x = max(0, min(int(norm_x * screen_width), screen_width))
+                        target_y = max(0, min(int(norm_y * screen_height), screen_height))
+                        logger.debug(f"Moving mouse to ({target_x}, {target_y})")
+                        self._mouse_controller.position = (target_x, target_y)
+                        
+                        # Handle any active buttons during drag
+                        active_buttons = input_event_data.get("buttons", [])
+                        for button_name in active_buttons:
+                            button = getattr(mouse.Button, button_name, None)
+                            if button:
+                                try:
+                                    self._mouse_controller.press(button)
+                                except Exception as e:
+                                    logger.error(f"Error pressing mouse button during drag: {e}")
+                except Exception as e:
+                    logger.error(f"Error handling mousemove: {e}")
 
-                elif event_type == "mousepress":
+            elif event_type == "mousepress":
+                try:
                     button_name = input_event_data.get("button")
-                    button = getattr(MButton, button_name, None)
-                    if button:
-                        self._mouse_controller.press(button)
+                    norm_x = input_event_data.get("norm_x")
+                    norm_y = input_event_data.get("norm_y")
+                    
+                    if button_name and norm_x is not None and norm_y is not None:
+                        target_x = max(0, min(int(norm_x * screen_width), screen_width))
+                        target_y = max(0, min(int(norm_y * screen_height), screen_height))
+                        self._mouse_controller.position = (target_x, target_y)
+                        button = getattr(mouse.Button, button_name, None)
+                        if button:
+                            logger.debug(f"Mouse button press: {button_name} at ({target_x}, {target_y})")
+                            self._mouse_controller.press(button)
+                        else:
+                            logger.warning(f"Unknown mouse button: {button_name}")
+                except Exception as e:
+                    logger.error(f"Error handling mousepress: {e}")
 
-                elif event_type == "mouserelease":
+            elif event_type == "mouserelease":
+                try:
                     button_name = input_event_data.get("button")
-                    button = getattr(MButton, button_name, None)
-                    if button:
-                        self._mouse_controller.release(button)
+                    if button_name:
+                        button = getattr(mouse.Button, button_name, None)
+                        if button:
+                            logger.debug(f"Mouse button release: {button_name}")
+                            self._mouse_controller.release(button)
+                        else:
+                            logger.warning(f"Unknown mouse button: {button_name}")
+                except Exception as e:
+                    logger.error(f"Error handling mouserelease: {e}")
 
-                elif event_type == "wheel":
-                    dx = input_event_data.get("delta_x", 0)
-                    dy = input_event_data.get("delta_y", 0)
-                    self._mouse_controller.scroll(dx, dy)
+            elif event_type == "wheel":
+                try:
+                    delta_x = input_event_data.get("delta_x", 0)
+                    delta_y = input_event_data.get("delta_y", 0)
+                    # Normalize scroll values to prevent extreme scrolling
+                    delta_x = max(-1, min(1, delta_x))
+                    delta_y = max(-1, min(1, delta_y))
+                    logger.debug(f"Mouse wheel: dx={delta_x}, dy={delta_y}")
+                    self._mouse_controller.scroll(delta_x, delta_y)
+                except Exception as e:
+                    logger.error(f"Error handling mouse wheel: {e}")
 
-                # --- Keyboard events ---
-                elif event_type in ("keypress", "keyrelease"):
+            elif event_type in ("keypress", "keyrelease"):
+                try:
                     is_press = event_type == "keypress"
-                    if is_auto_repeat:
-                        return  # Prevent flooding
+                    qt_key_code = input_event_data.get("key_code")
+                    text = input_event_data.get("text", "")
+                    is_auto_repeat = input_event_data.get("is_auto_repeat", False)
+                    modifiers = input_event_data.get("modifiers", [])
 
-                    qt_to_pynput = {
-                        Qt.Key_Escape: PKey.esc,
-                        Qt.Key_Tab: PKey.tab,
-                        Qt.Key_Backspace: PKey.backspace,
-                        Qt.Key_Return: PKey.enter,
-                        Qt.Key_Enter: PKey.enter,
-                        Qt.Key_Insert: PKey.insert,
-                        Qt.Key_Delete: PKey.delete,
-                        Qt.Key_Home: PKey.home,
-                        Qt.Key_End: PKey.end,
-                        Qt.Key_Left: PKey.left,
-                        Qt.Key_Up: PKey.up,
-                        Qt.Key_Right: PKey.right,
-                        Qt.Key_Down: PKey.down,
-                        Qt.Key_PageUp: PKey.page_up,
-                        Qt.Key_PageDown: PKey.page_down,
-                        Qt.Key_Shift: PKey.shift,
-                        Qt.Key_Control: PKey.ctrl,
-                        Qt.Key_Alt: PKey.alt,
-                        Qt.Key_AltGr: PKey.alt_gr,
-                        Qt.Key_Meta: PKey.cmd,
-                        Qt.Key_Super_L: PKey.cmd,
-                        Qt.Key_Super_R: PKey.cmd,
-                        Qt.Key_Menu: PKey.menu,
-                        Qt.Key_CapsLock: PKey.caps_lock,
-                        Qt.Key_NumLock: PKey.num_lock,
-                        Qt.Key_ScrollLock: PKey.scroll_lock,
-                        Qt.Key_Space: PKey.space,
-                        **{getattr(Qt, f"Key_F{i}"): getattr(PKey, f"f{i}") for i in range(1, 13)},
+                    # Skip auto-repeat to prevent key spam
+                    if is_auto_repeat:
+                        return
+
+                    # Handle printable characters
+                    if text and len(text) == 1 and text.isprintable():
+                        if is_press:
+                            self._keyboard_controller.press(text)
+                        else:
+                            self._keyboard_controller.release(text)
+                        logger.debug(f"Handled printable key: {text} ({'press' if is_press else 'release'})")
+                        return
+
+                    # Special keys mapping with extended support
+                    special_keys = {
+                        Qt.Key_Return: keyboard.Key.enter,
+                        Qt.Key_Enter: keyboard.Key.enter,
+                        Qt.Key_Tab: keyboard.Key.tab,
+                        Qt.Key_Space: keyboard.Key.space,
+                        Qt.Key_Backspace: keyboard.Key.backspace,
+                        Qt.Key_Delete: keyboard.Key.delete,
+                        Qt.Key_Escape: keyboard.Key.esc,
+                        Qt.Key_Left: keyboard.Key.left,
+                        Qt.Key_Right: keyboard.Key.right,
+                        Qt.Key_Up: keyboard.Key.up,
+                        Qt.Key_Down: keyboard.Key.down,
+                        Qt.Key_PageUp: keyboard.Key.page_up,
+                        Qt.Key_PageDown: keyboard.Key.page_down,
+                        Qt.Key_Home: keyboard.Key.home,
+                        Qt.Key_End: keyboard.Key.end,
+                        Qt.Key_Insert: keyboard.Key.insert,
+                        Qt.Key_F1: keyboard.Key.f1,
+                        Qt.Key_F2: keyboard.Key.f2,
+                        Qt.Key_F3: keyboard.Key.f3,
+                        Qt.Key_F4: keyboard.Key.f4,
+                        Qt.Key_F5: keyboard.Key.f5,
+                        Qt.Key_F6: keyboard.Key.f6,
+                        Qt.Key_F7: keyboard.Key.f7,
+                        Qt.Key_F8: keyboard.Key.f8,
+                        Qt.Key_F9: keyboard.Key.f9,
+                        Qt.Key_F10: keyboard.Key.f10,
+                        Qt.Key_F11: keyboard.Key.f11,
+                        Qt.Key_F12: keyboard.Key.f12,
+                        Qt.Key_Shift: keyboard.Key.shift,
+                        Qt.Key_Control: keyboard.Key.ctrl,
+                        Qt.Key_Alt: keyboard.Key.alt,
+                        Qt.Key_Meta: keyboard.Key.cmd,
+                        Qt.Key_CapsLock: keyboard.Key.caps_lock,
+                        Qt.Key_NumLock: keyboard.Key.num_lock,
+                        Qt.Key_ScrollLock: keyboard.Key.scroll_lock,
+                        Qt.Key_Print: keyboard.Key.print_screen,
+                        Qt.Key_Pause: keyboard.Key.pause,
+                        Qt.Key_Menu: keyboard.Key.menu,
                     }
 
-                    pynput_key = qt_to_pynput.get(qt_key_code)
-                    if not pynput_key:
-                        if text and len(text) == 1 and text.isprintable():
-                            pynput_key = text
-                        else:
-                            logger.warning(f"Unhandled key: Qt={qt_key_code}, text='{text}'")
-                            return
-
-                    try:
+                    # Handle special keys
+                    if qt_key_code in special_keys:
+                        key = special_keys[qt_key_code]
                         if is_press:
-                            self._keyboard_controller.press(pynput_key)
-                            logger.debug(f"Pressed {pynput_key}")
+                            self._keyboard_controller.press(key)
                         else:
-                            self._keyboard_controller.release(pynput_key)
-                            logger.debug(f"Released {pynput_key}")
-                    except Exception as e:
-                        logger.error(f"Error with pynput key event ({pynput_key}): {e}")
+                            self._keyboard_controller.release(key)
+                        logger.debug(f"Handled special key: {key} ({'press' if is_press else 'release'})")
+                        return
 
-                else:
-                    logger.warning(f"Unknown input event type: {event_type}")
+                    # Handle non-printable text as fallback
+                    if text and not text.isprintable():
+                        if is_press:
+                            self._keyboard_controller.press(text)
+                        else:
+                            self._keyboard_controller.release(text)
+                        logger.debug(f"Handled non-printable text: {text} ({'press' if is_press else 'release'})")
+                        return
 
-            except Exception:
-                logger.exception(f"Failed to handle input event: {input_event_data}")
+                    logger.debug(f"Unhandled key code: {qt_key_code}, text: {text}")
 
-
-    def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> set:
-        """
-        Convert Qt modifier keys to pynput modifier keys (set version).
-
-        Args:
-            event_modifiers_list: List of modifier key names.
-
-        Returns:
-            Set of pynput modifier keys.
-        """
-        modifiers = set()
-        for mod in event_modifiers_list:
-            if mod == "shift":
-                modifiers.add(keyboard.Key.shift)
-            elif mod == "ctrl":
-                modifiers.add(keyboard.Key.ctrl)
-            elif mod == "alt":
-                modifiers.add(keyboard.Key.alt)
-            elif mod == "meta":
-                modifiers.add(keyboard.Key.cmd)
-        return modifiers
-
-    def _map_qt_key_to_pynput(self, qt_key_code: int, text: str):
-        """
-        Map a Qt key code and text to a pynput key.
-
-        Args:
-            qt_key_code: The Qt key code.
-            text: The key text.
-
-        Returns:
-            The corresponding pynput key or text, or None if unmapped.
-        """
-        if (
-            text
-            and len(text) == 1
-            and text.isprintable()
-            and not (Qt.Key_Shift <= qt_key_code <= Qt.Key_ScrollLock)
-        ):
-            return text
-        key_map = {
-            Qt.Key_Escape: keyboard.Key.esc,
-            Qt.Key_Tab: keyboard.Key.tab,
-            Qt.Key_Backspace: keyboard.Key.backspace,
-            Qt.Key_Return: keyboard.Key.enter,
-            Qt.Key_Enter: keyboard.Key.enter,
-            Qt.Key_Insert: keyboard.Key.insert,
-            Qt.Key_Delete: keyboard.Key.delete,
-            Qt.Key_Home: keyboard.Key.home,
-            Qt.Key_End: keyboard.Key.end,
-            Qt.Key_Left: keyboard.Key.left,
-            Qt.Key_Up: keyboard.Key.up,
-            Qt.Key_Right: keyboard.Key.right,
-            Qt.Key_Down: keyboard.Key.down,
-            Qt.Key_PageUp: keyboard.Key.page_up,
-            Qt.Key_PageDown: keyboard.Key.page_down,
-            Qt.Key_Shift: keyboard.Key.shift,
-            Qt.Key_Control: keyboard.Key.ctrl,
-            Qt.Key_Alt: keyboard.Key.alt,
-            Qt.Key_Meta: keyboard.Key.cmd,
-            Qt.Key_CapsLock: keyboard.Key.caps_lock,
-            Qt.Key_NumLock: keyboard.Key.num_lock,
-            Qt.Key_ScrollLock: keyboard.Key.scroll_lock,
-            Qt.Key_F1: keyboard.Key.f1,
-            Qt.Key_F2: keyboard.Key.f2,
-            Qt.Key_F3: keyboard.Key.f3,
-            Qt.Key_F4: keyboard.Key.f4,
-            Qt.Key_F5: keyboard.Key.f5,
-            Qt.Key_F6: keyboard.Key.f6,
-            Qt.Key_F7: keyboard.Key.f7,
-            Qt.Key_F8: keyboard.Key.f8,
-            Qt.Key_F9: keyboard.Key.f9,
-            Qt.Key_F10: keyboard.Key.f10,
-            Qt.Key_F11: keyboard.Key.f11,
-            Qt.Key_F12: keyboard.Key.f12,
-            Qt.Key_Space: keyboard.Key.space,
-        }
-        pynput_key = key_map.get(qt_key_code)
-        if pynput_key:
-            return pynput_key
-        if text:
-            return text
-        logger.warning(f"Unmapped Qt key code: {qt_key_code}, text: '{text}'")
-        return None
-
-    def _handle_pynput_key_event(self, kb_controller, event_data: dict, press: bool):
-        """
-        Handle keyboard events by mapping Qt keys to pynput keys.
-
-        Args:
-            kb_controller: The pynput keyboard controller.
-            event_data: The event data dictionary.
-            press: True for key press, False for key release.
-        """
-        try:
-            qt_key_code = event_data.get("key_code")
-            text = event_data.get("text", "")
-            event_data.get("modifiers", [])
-            is_auto_repeat = event_data.get("is_auto_repeat", False)
-
-            # Skip auto-repeat events to prevent duplicate key presses
-            if is_auto_repeat:
-                return
-
-            # Handle regular character keys
-            if text and len(text) == 1 and text.isprintable():
-                logger.debug(
-                    f"Handling printable key: {text} ({'press' if press else 'release'})"
-                )
-                if press:
-                    kb_controller.press(text)
-                else:
-                    kb_controller.release(text)
-                return
-
-            # Map special keys
-            special_keys = {
-                Qt.Key_Return: keyboard.Key.enter,
-                Qt.Key_Enter: keyboard.Key.enter,
-                Qt.Key_Tab: keyboard.Key.tab,
-                Qt.Key_Space: keyboard.Key.space,
-                Qt.Key_Backspace: keyboard.Key.backspace,
-                Qt.Key_Delete: keyboard.Key.delete,
-                Qt.Key_Escape: keyboard.Key.esc,
-                Qt.Key_Left: keyboard.Key.left,
-                Qt.Key_Right: keyboard.Key.right,
-                Qt.Key_Up: keyboard.Key.up,
-                Qt.Key_Down: keyboard.Key.down,
-                Qt.Key_PageUp: keyboard.Key.page_up,
-                Qt.Key_PageDown: keyboard.Key.page_down,
-                Qt.Key_Home: keyboard.Key.home,
-                Qt.Key_End: keyboard.Key.end,
-                Qt.Key_Insert: keyboard.Key.insert,
-                Qt.Key_F1: keyboard.Key.f1,
-                Qt.Key_F2: keyboard.Key.f2,
-                Qt.Key_F3: keyboard.Key.f3,
-                Qt.Key_F4: keyboard.Key.f4,
-                Qt.Key_F5: keyboard.Key.f5,
-                Qt.Key_F6: keyboard.Key.f6,
-                Qt.Key_F7: keyboard.Key.f7,
-                Qt.Key_F8: keyboard.Key.f8,
-                Qt.Key_F9: keyboard.Key.f9,
-                Qt.Key_F10: keyboard.Key.f10,
-                Qt.Key_F11: keyboard.Key.f11,
-                Qt.Key_F12: keyboard.Key.f12,
-                Qt.Key_Shift: keyboard.Key.shift,
-                Qt.Key_Control: keyboard.Key.ctrl,
-                Qt.Key_Alt: keyboard.Key.alt,
-                Qt.Key_Meta: keyboard.Key.cmd,
-                Qt.Key_CapsLock: keyboard.Key.caps_lock,
-                Qt.Key_NumLock: keyboard.Key.num_lock,
-            }
-
-            if qt_key_code in special_keys:
-                key = special_keys[qt_key_code]
-                logger.debug(
-                    f"Handling special key: {key} ({'press' if press else 'release'})"
-                )
-                try:
-                    if press:
-                        kb_controller.press(key)
-                    else:
-                        kb_controller.release(key)
                 except Exception as e:
-                    logger.error(f"Error handling special key {key}: {e}")
-                return
+                    logger.error(f"Error handling keyboard event: {e}")
 
-            # Handle any remaining non-printable characters
-            if text and not text.isprintable():
-                try:
-                    if press:
-                        kb_controller.press(text)
-                    else:
-                        kb_controller.release(text)
-                except Exception as e:
-                    logger.error(f"Error handling non-printable text '{text}': {e}")
-                return
-
-            logger.debug(f"Unhandled key code: {qt_key_code}, text: {text}")
+            else:
+                logger.warning(f"Unknown input event type: {event_type}")
 
         except Exception as e:
-            logger.exception(f"Error in key event handler: {e}")
+            logger.exception(f"Error handling input event: {input_event_data}")
 
     def switch_role(self, new_role: str):
         """
