@@ -373,29 +373,36 @@ class AppController:
             self.signals.chat_error.emit(str(e))
 
     def request_target_permissions(self, view: bool, mouse: bool, keyboard: bool):
-        if (
-            self.current_role == "controller"
-            and isinstance(self.client, ControllerClient)
-            and self.peer_username
+        if not self.current_role == "controller" or not isinstance(
+            self.client, ControllerClient
         ):
-            logger.info(
-                f"Controller {self.current_username} requesting permissions from {self.peer_username}: v={view},m={mouse},k={keyboard}"
-            )
-            try:
-                self.client.request_permission(
-                    self.peer_username, view, mouse, keyboard
-                )
-            except ConnectionError as e:
-                self.signals.client_error.emit(0, f"Not connected to server: {e}")
-            except Exception as e:
-                logger.exception("Error requesting permissions")
-                self.signals.client_error.emit(
-                    0, f"Failed to send permission request: {e}"
-                )
-        else:
             logger.warning(
-                "Request permissions called but not in controller role, client invalid, or no peer."
+                "Cannot request target permissions - not in controller role or invalid client"
             )
+            return
+        
+        if not self.session_id or not self.peer_username:
+            self.signals.client_error.emit(400, "Not in an active session")
+            return
+
+        logger.info(
+            f"Controller {self.current_username} requesting permissions from {self.peer_username}: v={view},m={mouse},k={keyboard}"
+        )
+
+        try:
+            self.client.request_permission(self.peer_username, view, mouse, keyboard)
+        except ConnectionError as e:
+            logger.error(f"Connection error requesting permissions: {e}")
+            self.signals.client_error.emit(0, str(e))
+            self._cleanup_input_controllers()
+            self.session_id = None 
+            self.peer_username = None
+            self.granted_permissions = {}
+            self.signals.session_ended.emit()
+        except Exception as e:
+            logger.exception("Error requesting permissions")
+            self.signals.client_error.emit(0, f"Failed to request permissions: {e}")
+            self._cleanup_input_controllers()
 
     def send_input_event_to_target(self, input_data: dict):
         if (

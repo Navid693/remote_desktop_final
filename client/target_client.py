@@ -217,9 +217,17 @@ class TargetClient:
 
         elif ptype is PacketType.PERM_REQUEST:
             if isinstance(data, dict) and self._perm_request_callback:
-                controller_username = data.get(
-                    "controller_username", "UnknownController"
-                )
+                # Check if we're in a valid session
+                if not self.session_id or not self.peer_username:
+                    logger.warning("Received PERM_REQUEST but not in an active session")
+                    return
+
+                controller_username = data.get("controller_username", "UnknownController")
+                # Verify the request is from our current peer
+                if controller_username != self.peer_username.split('@')[0]:
+                    logger.warning(f"Received PERM_REQUEST from unexpected controller: {controller_username}")
+                    return
+
                 requested_permissions = {
                     "view": data.get("view", False),
                     "mouse": data.get("mouse", False),
@@ -230,14 +238,18 @@ class TargetClient:
                 )
 
                 if self.sock:  # Check if still connected
-                    send_json(
-                        self.sock,
-                        PacketType.PERM_RESPONSE,
-                        {
-                            "controller_username": controller_username,  # Send back for server to route
-                            "granted": granted_permissions,
-                        },
-                    )
+                    try:
+                        send_json(
+                            self.sock,
+                            PacketType.PERM_RESPONSE,
+                            {
+                                "controller_username": controller_username,
+                                "granted": granted_permissions,
+                            },
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send PERM_RESPONSE: {e}")
+                        self._handle_disconnection_logic("Failed to send permission response")
                 else:
                     logger.warning(
                         f"Socket closed before sending PERM_RESPONSE for {controller_username}"
@@ -246,9 +258,7 @@ class TargetClient:
         elif ptype is PacketType.CONNECT_INFO:
             if isinstance(data, dict):
                 self.session_id = data.get("session_id")
-                self.peer_username = data.get(
-                    "peer_username"
-                )  # This is the controller's username
+                self.peer_username = data.get("peer_username")
                 logger.info(
                     f"CONNECT_INFO received: session_id={self.session_id}, peer_username={self.peer_username}"
                 )
@@ -259,44 +269,21 @@ class TargetClient:
                 ):
                     self._connect_info_callback(self.session_id, self.peer_username)
 
-        elif (
-            ptype is PacketType.INPUT
-        ):  # Target receives INPUT from controller (via server)
-            if isinstance(data, dict) and self._input_data_callback:
-                input_event = data.get("input_event", {})
-                if input_event:  # Only process if we have actual input data
-                    logger.debug(f"Received input event: {input_event}")
-                    self._input_data_callback(input_event)
-                else:
-                    logger.warning("Received INPUT packet with empty input_event")
-            else:
-                logger.warning("Received INPUT but no callback registered")
-
         elif ptype is PacketType.ERROR:
             if isinstance(data, dict):
                 code = data.get("code", 0)
                 reason = data.get("reason", "Unknown error")
-                peer_username_dc = data.get(
-                    "peer_username"
-                )  # If it's a peer disconnect error
+                peer_username_dc = data.get("peer_username")
                 logger.error(
                     f"Server error {code}: {reason}. Peer disconnected: {peer_username_dc}"
                 )
                 if self._error_callback:
                     self._error_callback(code, reason, peer_username_dc)
 
-                if (
-                    code == 410
-                    and peer_username_dc
-                    and peer_username_dc == self.peer_username
-                ):
-                    logger.info(
-                        f"Peer controller {self.peer_username} disconnected. Resetting session state."
-                    )
+                if code == 410:  # Peer disconnected
+                    logger.info("Resetting session state due to peer disconnect")
                     self.session_id = None
                     self.peer_username = None
-                    # UI should be updated to reflect this.
-
         else:
             logger.error(f"Unexpected packet type: {ptype} with data: {data}")
 

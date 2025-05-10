@@ -339,43 +339,60 @@ class RelayHandler(StreamRequestHandler):
             )
             return
 
-        target_username = self.client_info.peer_username.split('@')[0]  # Remove IP:port if present
+        # Get target username without IP:port part
+        peer_parts = self.client_info.peer_username.split('@')
+        target_username = peer_parts[0]  # Just the username part
         target_info: Optional[ClientConnection] = None
-        
+
         with self.server.lock:
-            # First try exact match
-            target_info = self.server.active_clients.get(target_username)
+            # First try direct lookup by username
+            target_info = next(
+                (client for client in self.server.active_clients.values()
+                 if client.username == target_username and client.role == ROLE_TARGET),
+                None
+            )
+
             if not target_info:
-                # Try searching with IP:port variations
-                target_info = next(
-                    (client for client in self.server.active_clients.values() 
-                     if client.username == target_username and client.role == ROLE_TARGET),
-                    None
+                logger.warning(
+                    f"[PERM_REQUEST_FAIL] Target {target_username} not found for controller {self.client_info.username}"
                 )
+                send_json(
+                    self.request,
+                    PacketType.ERROR,
+                    {"code": 404, "reason": "Target peer disconnected"},
+                )
+                return
 
-        if not target_info:
-            send_json(
-                self.request,
-                PacketType.ERROR,
-                {"code": 404, "reason": "Target peer disconnected"},
-            )
-            return
+            # Verify session match
+            if target_info.session_id != self.client_info.session_id:
+                logger.warning(
+                    f"[PERM_REQUEST_FAIL] Session mismatch for target {target_username} and controller {self.client_info.username}"
+                )
+                send_json(
+                    self.request,
+                    PacketType.ERROR,
+                    {"code": 400, "reason": "Session mismatch with target"},
+                )
+                return
 
-        # Verify session match
-        if target_info.session_id != self.client_info.session_id:
-            send_json(
-                self.request,
-                PacketType.ERROR,
-                {"code": 400, "reason": "Session mismatch with target"},
-            )
-            return
-
-        # Add controller's username to the data being forwarded
-        data["controller_username"] = self.client_info.username
-        send_json(target_info.sock, PacketType.PERM_REQUEST, data)
-        logger.info(
-            f"[PERM_REQUEST_FWD] Forwarded perm request from {self.client_info.username} to {target_username}: {data}"
-        )
+            # Add controller information and forward request
+            data["controller_username"] = self.client_info.username
+            try:
+                send_json(target_info.sock, PacketType.PERM_REQUEST, data)
+                logger.info(
+                    f"[PERM_REQUEST_FWD] Forwarded perm request from {self.client_info.username} to {target_username}: {data}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"[PERM_REQUEST_ERROR] Failed to send permission request to {target_username}: {e}"
+                )
+                send_json(
+                    self.request,
+                    PacketType.ERROR,
+                    {"code": 404, "reason": "Target peer disconnected"},
+                )
+                # Clean up session state since target appears to be disconnected
+                self._handle_client_disconnection(target_info)
 
     def _handle_packet_perm_response(self, data: dict):
         """Handles PERM_RESPONSE from a target, forwards to controller."""
