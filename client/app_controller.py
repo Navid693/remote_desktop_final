@@ -737,37 +737,65 @@ class AppController:
                 "AppController: Event loop not running or None when trying to quit."
             )
 
+    def _release_stuck_modifiers(self):
+        if hasattr(self, "_keyboard_controller") and self._keyboard_controller:
+            logger.info(
+                "Attempting to release potentially stuck modifiers on disconnect."
+            )
+            modifiers_to_release = [
+                keyboard.Key.shift,
+                keyboard.Key.shift_l,
+                keyboard.Key.shift_r,
+                keyboard.Key.ctrl,
+                keyboard.Key.ctrl_l,
+                keyboard.Key.ctrl_r,
+                keyboard.Key.alt,
+                keyboard.Key.alt_l,
+                keyboard.Key.alt_r,
+                keyboard.Key.alt_gr,
+                keyboard.Key.cmd,
+                keyboard.Key.cmd_l,
+                keyboard.Key.cmd_r,  # For Windows/Super/Meta
+            ]
+            for key in modifiers_to_release:
+                try:
+                    self._keyboard_controller.release(key)
+                except Exception:  # NOSONAR
+                    # Ignore errors, e.g., if key was not actually pressed by pynput
+                    pass
+
     def _handle_client_error(
         self, code: int, reason: str, peer_username_if_disconnect: str | None
     ):
-        """
-        Handle client errors and session state cleanup.
-
-        Args:
-            code: The error code.
-            reason: The error reason.
-            peer_username_if_disconnect: The peer username if disconnected.
-        """
+        # ... existing code ...
         logger.error(
             f"Client error: code={code}, reason='{reason}', disconnected_peer='{peer_username_if_disconnect}'"
         )
         self.signals.client_error.emit(code, reason)
+
+        is_disconnect_affecting_session = False
         if (
-            code == 410
+            code == 410  # Peer explicitly disconnected via server error
             and peer_username_if_disconnect
             and peer_username_if_disconnect == self.peer_username
         ):
-            logger.info(f"Peer {self.peer_username} disconnected. Resetting session.")
-            self.signals.peer_disconnected.emit(self.peer_username)
-            self.session_id = None
-            self.peer_username = None
-            self.granted_permissions = {}
-            self.signals.session_ended.emit()
-        elif code == 0:
+            is_disconnect_affecting_session = True
+        elif (
+            code == 0
+        ):  # Client-side detected disconnection (e.g., socket error in client's reader thread)
+            if self.peer_username:  # If we were in a session
+                is_disconnect_affecting_session = True
+
+        if is_disconnect_affecting_session:
             logger.info(
-                "Client-side detected disconnection. Resetting session state if applicable."
+                f"Peer {self.peer_username or peer_username_if_disconnect} disconnected. Resetting session and input state."
             )
-            if self.peer_username:
+            if (
+                self.current_role == "target"
+            ):  # Only release modifiers if we are the target machine
+                self._release_stuck_modifiers()
+
+            if self.peer_username:  # Emit signal if peer_username was set
                 self.signals.peer_disconnected.emit(self.peer_username)
             self.session_id = None
             self.peer_username = None
@@ -829,7 +857,7 @@ class AppController:
             return
 
         try:
-            # Create controllers only once if not already created
+            # Create pynput controllers only once if not already created
             if not hasattr(self, "_mouse_controller"):
                 self._mouse_controller = mouse.Controller()
             if not hasattr(self, "_keyboard_controller"):
@@ -840,7 +868,9 @@ class AppController:
 
             if self.target_screen_dimensions:
                 screen_width, screen_height = self.target_screen_dimensions
-            elif GetSystemMetrics:  # Check if win32api was imported
+            elif (
+                WINDOWS_SPECIFIC_APIS_AVAILABLE and GetSystemMetrics
+            ):  # Check if win32api was imported
                 try:
                     screen_width_gs = GetSystemMetrics(0)
                     screen_height_gs = GetSystemMetrics(1)
@@ -875,24 +905,25 @@ class AppController:
                     screen_height,
                 )  # Store fallback
 
-            # Handle mouse events
+            # --- Mouse Event Handling (largely unchanged, but ensure screen dimensions are used) ---
             if event_type == "mousemove":
                 norm_x = input_event_data.get("norm_x")
                 norm_y = input_event_data.get("norm_y")
                 if norm_x is not None and norm_y is not None:
-                    # Convert normalized coordinates to actual screen coordinates
                     target_x = int(norm_x * screen_width)
                     target_y = int(norm_y * screen_height)
-                    logger.debug(f"Moving mouse to ({target_x}, {target_y})")
                     self._mouse_controller.position = (target_x, target_y)
 
-                    # Handle any active buttons during drag
-                    active_buttons = input_event_data.get("buttons", [])
-                    for button_name in active_buttons:
-                        button = getattr(mouse.Button, button_name, None)
-                        if button:
-                            # During drag, maintain button press state
-                            self._mouse_controller.press(button)
+                    input_event_data.get("buttons", [])
+                    # This logic for pressing during drag might need review if mouse buttons also get stuck,
+                    # but let's focus on keyboard first. Pynput usually handles drag by knowing a button is already pressed.
+                    # For now, assume this is intended. Consider if `pynput` needs explicit re-press during drag.
+                    # Most systems infer drag if a button is down and mouse moves.
+                    # Let's comment out the re-press during drag as it might be problematic.
+                    # for button_name in active_buttons:
+                    #     button = getattr(mouse.Button, button_name, None)
+                    #     if button:
+                    #         self._mouse_controller.press(button)
 
             elif event_type == "mousepress":
                 button_name = input_event_data.get("button")
@@ -900,147 +931,139 @@ class AppController:
                 norm_y = input_event_data.get("norm_y")
 
                 if button_name and norm_x is not None and norm_y is not None:
-                    # Move mouse to click position first
                     target_x = int(norm_x * screen_width)
                     target_y = int(norm_y * screen_height)
                     self._mouse_controller.position = (target_x, target_y)
 
-                    # Then perform click
                     button = getattr(mouse.Button, button_name, None)
                     if button:
-                        logger.debug(
-                            f"Mouse button press: {button_name} at ({target_x}, {target_y})"
-                        )
                         self._mouse_controller.press(button)
                     else:
-                        logger.warning(f"Unknown mouse button: {button_name}")
+                        logger.warning(f"Unknown mouse button for press: {button_name}")
 
             elif event_type == "mouserelease":
                 button_name = input_event_data.get("button")
+                # For release, position is less critical but good to be consistent if clicks are involved
+                norm_x = input_event_data.get(
+                    "norm_x"
+                )  # Get current position if available
+                norm_y = input_event_data.get("norm_y")
+                if norm_x is not None and norm_y is not None:
+                    target_x = int(norm_x * screen_width)
+                    target_y = int(norm_y * screen_height)
+                    self._mouse_controller.position = (target_x, target_y)
+
                 if button_name:
                     button = getattr(mouse.Button, button_name, None)
                     if button:
-                        logger.debug(f"Mouse button release: {button_name}")
                         self._mouse_controller.release(button)
                     else:
-                        logger.warning(f"Unknown mouse button: {button_name}")
+                        logger.warning(
+                            f"Unknown mouse button for release: {button_name}"
+                        )
 
             elif event_type == "wheel":
                 delta_x = input_event_data.get("delta_x", 0)
                 delta_y = input_event_data.get("delta_y", 0)
-                logger.debug(f"Mouse wheel: dx={delta_x}, dy={delta_y}")
-                # Handle horizontal and vertical scrolling
                 self._mouse_controller.scroll(delta_x, delta_y)
 
-            # Handle keyboard events
+            # --- Revised Keyboard Event Handling ---
             elif event_type in ("keypress", "keyrelease"):
                 is_press = event_type == "keypress"
                 qt_key_code = input_event_data.get("key_code")
                 text = input_event_data.get("text", "")
                 is_auto_repeat = input_event_data.get("is_auto_repeat", False)
-                modifiers = input_event_data.get("modifiers", [])
+                # `modifiers_list` (e.g., ['shift', 'ctrl']) from the original event is primarily for context
+                # on the sender side (e.g., to determine `text`). On the target side, `pynput`
+                # typically manages the effect of currently pressed modifiers implicitly.
+                # We will not use `modifiers_list` here to re-press/release modifiers.
 
-                # Skip auto-repeat to prevent key spam
                 if is_auto_repeat:
+                    # Generally, we want to skip auto-repeat for most keys to avoid flooding.
+                    # However, for some keys (like holding down backspace or an arrow key),
+                    # auto-repeat is desired. Pynput's press/release should be idempotent for
+                    # modifier keys if they were to auto-repeat.
+                    # For simplicity and to avoid issues, skipping all auto-repeat is safer.
+                    # If specific auto-repeat behavior is needed, it requires more nuanced handling.
+                    logger.debug(
+                        f"Skipping auto-repeat: code={qt_key_code}, text='{text}'"
+                    )
                     return
 
-                # Handle modifier keys first
-                mod_keys = self._get_key_modifiers_for_pynput(modifiers)
-                for mod_key in mod_keys:
+                pynput_key_to_process = None
+
+                # 1. Define maps for direct Qt.Key -> pynput.Key mapping
+                # These are keys that have a direct, non-character representation.
+                qt_to_pynput_map = {
+                    # Modifiers
+                    Qt.Key_Shift: keyboard.Key.shift,
+                    Qt.Key_Control: keyboard.Key.ctrl,
+                    Qt.Key_Alt: keyboard.Key.alt,
+                    Qt.Key_Meta: keyboard.Key.cmd,  # Windows/Super/Command key
+                    Qt.Key_CapsLock: keyboard.Key.caps_lock,
+                    Qt.Key_NumLock: keyboard.Key.num_lock,
+                    # Qt.Key_ScrollLock: keyboard.Key.scroll_lock, # pynput.keyboard.Key might not have scroll_lock
+                    # Special Keys (excluding modifiers already listed)
+                    Qt.Key_Return: keyboard.Key.enter,
+                    Qt.Key_Enter: keyboard.Key.enter,  # Alias for numpad enter often
+                    Qt.Key_Tab: keyboard.Key.tab,
+                    Qt.Key_Space: keyboard.Key.space,
+                    Qt.Key_Backspace: keyboard.Key.backspace,
+                    Qt.Key_Delete: keyboard.Key.delete,
+                    Qt.Key_Escape: keyboard.Key.esc,
+                    Qt.Key_Left: keyboard.Key.left,
+                    Qt.Key_Right: keyboard.Key.right,
+                    Qt.Key_Up: keyboard.Key.up,
+                    Qt.Key_Down: keyboard.Key.down,
+                    Qt.Key_PageUp: keyboard.Key.page_up,
+                    Qt.Key_PageDown: keyboard.Key.page_down,
+                    Qt.Key_Home: keyboard.Key.home,
+                    Qt.Key_End: keyboard.Key.end,
+                    Qt.Key_Insert: keyboard.Key.insert,
+                    # Function keys F1-F12
+                    **{
+                        getattr(Qt, f"Key_F{i}"): getattr(keyboard.Key, f"f{i}")
+                        for i in range(1, 13)
+                    },
+                }
+
+                if qt_key_code in qt_to_pynput_map:
+                    pynput_key_to_process = qt_to_pynput_map[qt_key_code]
+                elif (
+                    text
+                ):  # If it's not a special mapped key, use the text if available
+                    # This covers printable characters and some other symbols.
+                    pynput_key_to_process = text
+                # else:
+                # If qt_key_code is not in map and text is empty, it's an unhandled key.
+                # logger.warning(f"Key not directly mapped and no text: qt_key_code={qt_key_code}")
+
+                # 2. Perform press or release with pynput
+                if pynput_key_to_process:
                     try:
                         if is_press:
-                            self._keyboard_controller.press(mod_key)
+                            self._keyboard_controller.press(pynput_key_to_process)
                         else:
-                            self._keyboard_controller.release(mod_key)
+                            self._keyboard_controller.release(pynput_key_to_process)
+                        logger.debug(
+                            f"Pynput: {'Pressed' if is_press else 'Released'} key='{pynput_key_to_process}' (from qt_key_code={qt_key_code}, text='{text}')"
+                        )
                     except Exception as e:
-                        logger.error(f"Error handling modifier key {mod_key}: {e}")
-
-                # Handle the actual key
-                try:
-                    # Try direct text input first for printable characters
-                    if text and len(text) == 1 and text.isprintable():
-                        if is_press:
-                            self._keyboard_controller.press(text)
-                        else:
-                            self._keyboard_controller.release(text)
-                        logger.debug(
-                            f"Handled printable key: {text} ({'press' if is_press else 'release'})"
+                        # pynput might raise error for certain complex characters or unhandled keys.
+                        # For example, pynput.keyboard.Controller().press('é') might work, but
+                        # Controller().press(some_non_char_object_from_text) could fail.
+                        logger.error(
+                            f"Pynput error handling key='{pynput_key_to_process}': {e} (qt_key_code={qt_key_code}, text='{text}')"
                         )
-                        return
-
-                    # Handle special keys
-                    special_keys = {
-                        Qt.Key_Return: keyboard.Key.enter,
-                        Qt.Key_Enter: keyboard.Key.enter,
-                        Qt.Key_Tab: keyboard.Key.tab,
-                        Qt.Key_Space: keyboard.Key.space,
-                        Qt.Key_Backspace: keyboard.Key.backspace,
-                        Qt.Key_Delete: keyboard.Key.delete,
-                        Qt.Key_Escape: keyboard.Key.esc,
-                        Qt.Key_Left: keyboard.Key.left,
-                        Qt.Key_Right: keyboard.Key.right,
-                        Qt.Key_Up: keyboard.Key.up,
-                        Qt.Key_Down: keyboard.Key.down,
-                        Qt.Key_PageUp: keyboard.Key.page_up,
-                        Qt.Key_PageDown: keyboard.Key.page_down,
-                        Qt.Key_Home: keyboard.Key.home,
-                        Qt.Key_End: keyboard.Key.end,
-                        Qt.Key_Insert: keyboard.Key.insert,
-                        Qt.Key_F1: keyboard.Key.f1,
-                        Qt.Key_F2: keyboard.Key.f2,
-                        Qt.Key_F3: keyboard.Key.f3,
-                        Qt.Key_F4: keyboard.Key.f4,
-                        Qt.Key_F5: keyboard.Key.f5,
-                        Qt.Key_F6: keyboard.Key.f6,
-                        Qt.Key_F7: keyboard.Key.f7,
-                        Qt.Key_F8: keyboard.Key.f8,
-                        Qt.Key_F9: keyboard.Key.f9,
-                        Qt.Key_F10: keyboard.Key.f10,
-                        Qt.Key_F11: keyboard.Key.f11,
-                        Qt.Key_F12: keyboard.Key.f12,
-                        Qt.Key_Shift: keyboard.Key.shift,
-                        Qt.Key_Control: keyboard.Key.ctrl,
-                        Qt.Key_Alt: keyboard.Key.alt,
-                        Qt.Key_Meta: keyboard.Key.cmd,
-                        Qt.Key_CapsLock: keyboard.Key.caps_lock,
-                        Qt.Key_NumLock: keyboard.Key.num_lock,
-                    }
-
-                    if qt_key_code in special_keys:
-                        key = special_keys[qt_key_code]
-                        if is_press:
-                            self._keyboard_controller.press(key)
-                        else:
-                            self._keyboard_controller.release(key)
-                        logger.debug(
-                            f"Handled special key: {key} ({'press' if is_press else 'release'})"
-                        )
-                        return
-
-                    # Handle any remaining non-printable characters
-                    if text and not text.isprintable():
-                        try:
-                            if is_press:
-                                self._keyboard_controller.press(text)
-                            else:
-                                self._keyboard_controller.release(text)
-                            logger.debug(f"Handled non-printable text: {text}")
-                            return
-                        except Exception as e:
-                            logger.error(
-                                f"Error handling non-printable text '{text}': {e}"
-                            )
-                            return
-
-                    logger.warning(f"Unhandled key code: {qt_key_code}, text: {text}")
-
-                except Exception as e:
-                    logger.error(f"Error handling keyboard event: {e}", exc_info=True)
+                else:
+                    logger.warning(
+                        f"Unhandled keyboard event: qt_key_code={qt_key_code}, text='{text}', is_press={is_press}"
+                    )
 
             else:
                 logger.warning(f"Unknown input event type: {event_type}")
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error handling input event: {input_event_data}")
 
     def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> set:
@@ -1140,7 +1163,7 @@ class AppController:
         try:
             qt_key_code = event_data.get("key_code")
             text = event_data.get("text", "")
-            modifiers = event_data.get("modifiers", [])
+            event_data.get("modifiers", [])
             is_auto_repeat = event_data.get("is_auto_repeat", False)
 
             # Skip auto-repeat events to prevent duplicate key presses
