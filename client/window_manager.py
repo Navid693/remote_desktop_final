@@ -402,7 +402,7 @@ class WindowManager(QObject):
             "Connection Established",
         )
 
-    def update_session_ended_status():  # Could take a reason string
+    def update_session_ended_status(self):  # Could take a reason string
         if self.main_controller_window and hasattr(
             self.main_controller_window, "update_peer_status"
         ):
