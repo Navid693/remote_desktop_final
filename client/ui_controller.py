@@ -122,8 +122,16 @@ class ControllerWindow(QMainWindow):
         self._last_fps_update = time.time()
         self._current_fps = 0
         
+        # Add bandwidth monitoring
+        self._bytes_sent = 0
+        self._bytes_received = 0
+        self._last_bandwidth_update = time.time()
+        self._upload_speed = 0
+        self._download_speed = 0
+        
         self._session_start_time = time.time()
         self._frame_timer = QTimer(self)
+        self._bandwidth_timer = QTimer(self)
         self._build_ui()
         self._connect_signals()
         log.info(f"MainWindow loaded for {username} (UID: {user_id}, Role: {role})")
@@ -335,15 +343,27 @@ class ControllerWindow(QMainWindow):
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.session_timer_label = QLabel("Session: 00:00:00")
+        
+        # Left side status items
+        self.status_bar.addWidget(QLabel(f"User: {self.username}"))
+        
+        # Right side status items (permanent widgets)
+        self.bandwidth_label = QLabel("↑0 KB/s ↓0 KB/s")
         self.fps_label = QLabel("FPS: 0")
-        self.status_bar.addPermanentWidget(QLabel(f"User: {self.username}"))
+        self.session_timer_label = QLabel("Session: 00:00:00")
+        
+        self.status_bar.addPermanentWidget(self.bandwidth_label)
         self.status_bar.addPermanentWidget(self.fps_label)
         self.status_bar.addPermanentWidget(self.session_timer_label)
 
+        # Set up timers
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_session_timer)
         self._timer.start(1000)
+
+        self._bandwidth_timer = QTimer(self)
+        self._bandwidth_timer.timeout.connect(self._update_bandwidth)
+        self._bandwidth_timer.start(1000)  # Update bandwidth every second
 
         self._frame_timer.timeout.connect(self._send_placeholder_frame)
         self._update_role_ui()
@@ -537,6 +557,32 @@ class ControllerWindow(QMainWindow):
         else:
             self.session_timer_label.setText("Session: --:--:--")
             self._session_start_time = time.time()
+
+    def _update_bandwidth(self):
+        """Update bandwidth display in status bar"""
+        current_time = time.time()
+        time_diff = current_time - self._last_bandwidth_update
+
+        if time_diff > 0:
+            # Calculate speeds in KB/s
+            upload_speed = (self._bytes_sent / 1024) / time_diff
+            download_speed = (self._bytes_received / 1024) / time_diff
+            
+            # Update display
+            self.bandwidth_label.setText(f"↑{upload_speed:.1f} KB/s ↓{download_speed:.1f} KB/s")
+            
+            # Reset counters
+            self._bytes_sent = 0
+            self._bytes_received = 0
+            self._last_bandwidth_update = current_time
+
+    def on_data_sent(self, num_bytes: int):
+        """Called when data is sent to update bandwidth monitoring"""
+        self._bytes_sent += num_bytes
+
+    def on_data_received(self, num_bytes: int):
+        """Called when data is received to update bandwidth monitoring"""
+        self._bytes_received += num_bytes
 
     def _update_theme_icon(self, theme_name: str):
         if hasattr(self, "theme_btn"):

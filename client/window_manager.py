@@ -261,6 +261,12 @@ class WindowManager(QObject):
         ):
             self.main_controller_window.chat_area.update_theme(current_theme)
 
+        # Initialize UI event timers
+        if hasattr(self.main_controller_window, "_timer"):
+            self.main_controller_window._timer.start()
+        if hasattr(self.main_controller_window, "_bandwidth_timer"):
+            self.main_controller_window._bandwidth_timer.start()
+
         self.main_controller_window.show()
 
     def show_admin_window(self, username: str):
@@ -402,7 +408,7 @@ class WindowManager(QObject):
             "Connection Established",
         )
 
-    def update_session_ended_status():  # Could take a reason string
+    def update_session_ended_status(self):  # Add self parameter
         if self.main_controller_window and hasattr(
             self.main_controller_window, "update_peer_status"
         ):

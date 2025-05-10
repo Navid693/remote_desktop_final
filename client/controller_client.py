@@ -30,6 +30,8 @@ class ControllerClient:
         self._frame_data_callback: Optional[Callable[[bytes], None]] = (
             None  # For receiving frames
         )
+        self._data_sent_callback: Optional[Callable[[int], None]] = None  # New: Track bytes sent
+        self._data_received_callback: Optional[Callable[[int], None]] = None  # New: Track bytes received
 
         self.session_id: Optional[int] = None
         self.peer_username: Optional[str] = None
@@ -127,6 +129,11 @@ class ControllerClient:
         """Register callback for incoming frame data: callback(frame_bytes)"""
         self._frame_data_callback = callback
 
+    def on_data_transfer(self, sent_callback: Callable[[int], None], received_callback: Callable[[int], None]):
+        """Register callbacks for monitoring data transfer: sent_callback(bytes_sent), received_callback(bytes_received)"""
+        self._data_sent_callback = sent_callback
+        self._data_received_callback = received_callback
+
     def send_chat(self, text: str, sender: str = None, timestamp: str = None) -> None:
         """Send a chat message to the server."""
         if not self.sock:
@@ -136,11 +143,14 @@ class ControllerClient:
         if not sender:
             sender = self.username
 
+        data = {"text": text, "sender": sender, "timestamp": timestamp}
         send_json(
             self.sock,
             PacketType.CHAT,
-            {"text": text, "sender": sender, "timestamp": timestamp},
+            data,
         )
+        if self._data_sent_callback:
+            self._data_sent_callback(len(str(data).encode()))
 
     def send_input(self, input_data: Dict[str, Any]) -> None:
         """Send mouse/keyboard input data to the server."""
@@ -168,6 +178,8 @@ class ControllerClient:
                 "input_event": input_data,
             },  # Server can route based on target_username
         )
+        if self._data_sent_callback:
+            self._data_sent_callback(len(str(input_data).encode()))
 
     # -------- internal --------
     def _reader(self):
@@ -238,6 +250,14 @@ class ControllerClient:
         self, ptype: PacketType, data: Union[Dict[str, Any], bytes]
     ) -> None:
         """Handle incoming packets from the server. Data can be dict or bytes."""
+        # Track received data size
+        if isinstance(data, bytes):
+            data_size = len(data)
+        else:
+            data_size = len(str(data).encode())
+        if self._data_received_callback:
+            self._data_received_callback(data_size)
+
         if ptype is PacketType.CHAT:
             if isinstance(data, dict) and self._chat_callback:
                 sender = data.get("sender", "Unknown")

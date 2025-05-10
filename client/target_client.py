@@ -36,6 +36,8 @@ class TargetClient:
         self._input_data_callback: Optional[Callable[[Dict[str, Any]], None]] = (
             None  # For receiving input events
         )
+        self._data_sent_callback: Optional[Callable[[int], None]] = None  # New: Track bytes sent
+        self._data_received_callback: Optional[Callable[[int], None]] = None  # New: Track bytes received
 
         self.session_id: Optional[int] = None
         self.peer_username: Optional[str] = (
@@ -80,15 +82,18 @@ class TargetClient:
             timestamp = (
                 datetime.datetime.now().isoformat()
             )  # Use ISO format for consistency
+        data = {
+            "text": text,
+            "timestamp": timestamp,
+            "sender": self.username,
+        }  # Sender is self
         send_json(
             self.sock,
             PacketType.CHAT,
-            {
-                "text": text,
-                "timestamp": timestamp,
-                "sender": self.username,
-            },  # Sender is self
+            data
         )
+        if self._data_sent_callback:
+            self._data_sent_callback(len(str(data).encode()))
 
     def on_chat(self, callback: Callable[[str, str, str], None]):
         """Register callback for incoming chat messages: callback(sender, text, timestamp)"""
@@ -116,6 +121,11 @@ class TargetClient:
         self._input_data_callback = callback
         logger.info("Input data callback registered")
 
+    def on_data_transfer(self, sent_callback: Callable[[int], None], received_callback: Callable[[int], None]):
+        """Register callbacks for monitoring data transfer: sent_callback(bytes_sent), received_callback(bytes_received)"""
+        self._data_sent_callback = sent_callback
+        self._data_received_callback = received_callback
+
     def send_frame_data(self, frame_bytes: bytes):
         """Send screen frame data to the server (and then to controller)."""
         if not self.sock:
@@ -125,6 +135,8 @@ class TargetClient:
         from shared.protocol import send_bytes as send_raw_bytes  # Explicit import
 
         send_raw_bytes(self.sock, PacketType.FRAME, frame_bytes)
+        if self._data_sent_callback:
+            self._data_sent_callback(len(frame_bytes))
 
     # --- reader ---
     def _reader(self):
@@ -188,6 +200,14 @@ class TargetClient:
         self, ptype: PacketType, data: Union[Dict[str, Any], bytes]
     ) -> None:
         """Handle incoming packets from the server."""
+        # Track received data size
+        if isinstance(data, bytes):
+            data_size = len(data)
+        else:
+            data_size = len(str(data).encode())
+        if self._data_received_callback:
+            self._data_received_callback(data_size)
+
         if ptype is PacketType.CHAT:
             if isinstance(data, dict) and self._chat_callback:
                 sender = data.get("sender", "Unknown")

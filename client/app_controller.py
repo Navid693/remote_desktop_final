@@ -124,6 +124,19 @@ class AppController:
                 "CRITICAL: WindowManager instance does not have 'permission_dialog_response_ready' signal!"
             )
 
+        # Connect bandwidth monitoring to UI when main window is available
+        if hasattr(self.wm.main_controller_window, "on_data_sent"):
+            if isinstance(self.client, ControllerClient):
+                self.client.on_data_transfer(
+                    self.wm.main_controller_window.on_data_sent,
+                    self.wm.main_controller_window.on_data_received
+                )
+            elif isinstance(self.client, TargetClient):
+                self.client.on_data_transfer(
+                    self.wm.main_controller_window.on_data_sent,
+                    self.wm.main_controller_window.on_data_received
+                )
+
     def run(self):
         self.wm.show_login_window()
 
@@ -602,6 +615,7 @@ class AppController:
             self.signals.session_ended.emit()
 
     def _handle_frame_data(self, frame_bytes: bytes):
+        """Handle incoming frame data from target."""
         if self.granted_permissions.get("view"):
             self.signals.frame_received.emit(frame_bytes)
         else:
@@ -975,6 +989,19 @@ class AppController:
         logger.info(f"Switching role from {self.current_role} to {new_role}")
         self.handle_logout()
         self.signals.role_changed.emit(new_role)
+
+        # Re-connect bandwidth monitoring for the new role
+        if hasattr(self.wm.main_controller_window, "on_data_sent"):
+            if isinstance(self.client, ControllerClient):
+                self.client.on_data_transfer(
+                    self.wm.main_controller_window.on_data_sent,
+                    self.wm.main_controller_window.on_data_received
+                )
+            elif isinstance(self.client, TargetClient):
+                self.client.on_data_transfer(
+                    self.wm.main_controller_window.on_data_sent,
+                    self.wm.main_controller_window.on_data_received
+                )
 
     def admin_fetch_users(self):
         if self.current_role == "admin":
