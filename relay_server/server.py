@@ -265,9 +265,7 @@ class RelayHandler(StreamRequestHandler):
 
         # Create a new session
         session_id = db.open_session(controller_info.user_id, target_info.user_id)
-        if (
-            session_id is None
-        ):  # Should not happen with current DB logic, but good practice
+        if session_id is None:
             logger.error(
                 f"[DB_ERROR] Failed to open session for {controller_info.username} and {target_info.username}"
             )
@@ -281,24 +279,18 @@ class RelayHandler(StreamRequestHandler):
         # Update client info for both controller and target
         with self.server.lock:
             controller_info.session_id = session_id
-            controller_info.peer_username = target_info.username
+            controller_info.peer_username = f"{target_info.username}@{target_info.addr[0]}:{target_info.addr[1]}"
             target_info.session_id = session_id
-            target_info.peer_username = controller_info.username
-
-        # Format usernames with IP:port for display
-        controller_addr = f"{controller_info.addr[0]}:{controller_info.addr[1]}"
-        target_addr = f"{target_info.addr[0]}:{target_info.addr[1]}"
-        controller_display = f"{controller_info.username}@{controller_addr}"
-        target_display = f"{target_info.username}@{target_addr}"
+            target_info.peer_username = f"{controller_info.username}@{controller_info.addr[0]}:{controller_info.addr[1]}"
 
         # Notify both clients
         connect_info_payload_for_controller = {
-            "peer_username": target_display,  # Include IP:port in username
+            "peer_username": f"{target_info.username}@{target_info.addr[0]}:{target_info.addr[1]}",
             "session_id": session_id,
             "role": "controller",
         }
         connect_info_payload_for_target = {
-            "peer_username": controller_display,  # Include IP:port in username
+            "peer_username": f"{controller_info.username}@{controller_info.addr[0]}:{controller_info.addr[1]}",
             "session_id": session_id,
             "role": "target",
         }
@@ -309,11 +301,13 @@ class RelayHandler(StreamRequestHandler):
             connect_info_payload_for_controller,
         )
         send_json(
-            target_info.sock, PacketType.CONNECT_INFO, connect_info_payload_for_target
+            target_info.sock, 
+            PacketType.CONNECT_INFO, 
+            connect_info_payload_for_target
         )
 
         logger.info(
-            f"[SESSION_START] Session {session_id} started: {controller_display} (Controller) ↔ {target_display} (Target)"
+            f"[SESSION_START] Session {session_id} started: {controller_info.username}@{controller_info.addr[0]}:{controller_info.addr[1]} (Controller) ↔ {target_info.username}@{target_info.addr[0]}:{target_info.addr[1]} (Target)"
         )
         db.log(
             "INFO",
