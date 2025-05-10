@@ -1,9 +1,16 @@
 # remote_desktop_final/client/controller_client.py
-import datetime  # Changed
+# remote_desktop_final/client/controller_client.py
+"""
+This module defines the ControllerClient class, which is responsible for
+managing the client-side connection and communication with the remote desktop server
+from the controller's perspective. It handles authentication, connection requests,
+permission management, and data transfer for remote desktop control.
+"""
+import datetime
 import logging
 import socket
 import threading
-from typing import (  # Added Dict, Optional, Any, Union
+from typing import (
     Any,
     Callable,
     Dict,
@@ -17,23 +24,49 @@ logger = logging.getLogger(__name__)
 
 
 class ControllerClient:
+    """
+    A client for controlling remote desktop sessions.
+
+    This class manages the connection to the server, handles authentication,
+    and provides methods for requesting connections, managing permissions,
+    and sending/receiving data.
+    """
+
     def __init__(self, host: str, port: int, username: str, password: str) -> None:
+        """
+        Initializes the ControllerClient.
+
+        Args:
+            host (str): The hostname or IP address of the server.
+            port (int): The port number to connect to.
+            username (str): The username for authentication.
+            password (str): The password for authentication.
+        """
         self.sock: Optional[socket.socket] = None
+        """The socket connection to the server."""
         self.username: str = username
+        """The username of the client."""
         self.user_id: Optional[int] = None
+        """The user ID assigned by the server."""
         self._chat_callback: Optional[Callable[[str, str, str], None]] = None
+        """Callback function for incoming chat messages."""
         self._connect_info_callback: Optional[Callable[[int, str], None]] = None
+        """Callback function for connection information."""
         self._permission_update_callback: Optional[
             Callable[[Dict[str, bool]], None]
         ] = None
+        """Callback function for permission updates."""
         self._error_callback: Optional[Callable[[int, str, Optional[str]], None]] = None
-        self._frame_data_callback: Optional[Callable[[bytes], None]] = (
-            None  # For receiving frames
-        )
+        """Callback function for server errors."""
+        self._frame_data_callback: Optional[Callable[[bytes], None]] = None
+        """Callback function for incoming frame data."""
 
         self.session_id: Optional[int] = None
+        """The ID of the current session."""
         self.peer_username: Optional[str] = None
+        """The username of the connected peer."""
         self.granted_permissions: Dict[str, bool] = {}
+        """The permissions granted by the peer."""
 
         try:
             self.sock = socket.create_connection((host, port))

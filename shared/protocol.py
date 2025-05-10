@@ -1,5 +1,6 @@
-"""shared.protocol
-==================
+"""
+shared.protocol
+
 Communication protocol and packet handling for the Remote Desktop system.
 
 Key Components:

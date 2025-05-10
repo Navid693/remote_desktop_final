@@ -24,22 +24,41 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+# Configure logging for this module
 log = logging.getLogger(__name__)
 
 
 class UserEditDialog(QDialog):
-    """Dialog for adding or editing a user."""
+    """
+    Dialog for adding or editing a user.
+
+    Allows administrators to create new user accounts or modify existing ones.
+    Provides input fields for username and password, with password confirmation for new users.
+    """
 
     def __init__(self, parent=None, user_data: dict | None = None):
+        """
+        Initializes the UserEditDialog.
+
+        Args:
+            parent: The parent widget.
+            user_data: A dictionary containing user data for editing an existing user.
+                       If None, the dialog operates in "add user" mode.
+        """
         super().__init__(parent)
+        # Determine if the dialog is in edit mode based on whether user_data is provided
         self.is_edit_mode = user_data is not None
+        # Store the user data for pre-filling fields in edit mode
         self.user_data = user_data or {}
 
+        # Set the window title based on the mode
         self.setWindowTitle("Edit User" if self.is_edit_mode else "Add User")
         self.setMinimumWidth(350)
 
+        # Create the main layout for the dialog
         layout = QVBoxLayout(self)
 
+        # Username input
         self.username_label = QLabel("Username:")
         self.username_input = QLineEdit()
         if self.is_edit_mode:
@@ -47,6 +66,7 @@ class UserEditDialog(QDialog):
         layout.addWidget(self.username_label)
         layout.addWidget(self.username_input)
 
+        # Password input
         self.password_label = QLabel(
             "Password:"
             if not self.is_edit_mode
@@ -57,13 +77,15 @@ class UserEditDialog(QDialog):
         layout.addWidget(self.password_label)
         layout.addWidget(self.password_input)
 
-        if not self.is_edit_mode:  # Confirm password only for new users
+        # Confirm password input (only for new users)
+        if not self.is_edit_mode:
             self.confirm_password_label = QLabel("Confirm Password:")
             self.confirm_password_input = QLineEdit()
             self.confirm_password_input.setEchoMode(QLineEdit.Password)
             layout.addWidget(self.confirm_password_label)
             layout.addWidget(self.confirm_password_input)
 
+        # Dialog button box (OK and Cancel)
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
         )
@@ -72,14 +94,23 @@ class UserEditDialog(QDialog):
         layout.addWidget(self.button_box)
 
     def get_data(self) -> dict | None:
+        """
+        Validates and retrieves the user data entered in the dialog.
+
+        Returns:
+            A dictionary containing the user data (username and password) if validation succeeds,
+            None otherwise.
+        """
         username = self.username_input.text().strip()
         password = self.password_input.text()  # No strip, password can have spaces
 
+        # Validate username
         if not username:
             QMessageBox.warning(self, "Input Error", "Username cannot be empty.")
             return None
 
-        if not self.is_edit_mode:  # New user
+        # Validate password for new users
+        if not self.is_edit_mode:
             confirm_password = self.confirm_password_input.text()
             if not password:
                 QMessageBox.warning(
@@ -107,6 +138,13 @@ class UserEditDialog(QDialog):
 
 
 class AdminWindow(QMainWindow):
+    """
+    The main window for the administrator panel.
+
+    Provides user management and log viewing functionalities.
+    """
+
+    # Signals for communication with the AppController
     logout_signal = pyqtSignal()
     toggle_theme_signal = pyqtSignal()
 
@@ -126,6 +164,12 @@ class AdminWindow(QMainWindow):
     )  # limit, offset, level, event, user
 
     def __init__(self, username: str):
+        """
+        Initializes the AdminWindow.
+
+        Args:
+            username: The username of the logged-in administrator.
+        """
         super().__init__()
         self.username = username
         self._build_ui()
@@ -137,6 +181,7 @@ class AdminWindow(QMainWindow):
         self.fetch_logs_requested.emit(100, 0, "", "", "")  # Initial fetch
 
     def _build_ui(self) -> None:
+        """Builds the user interface for the admin window."""
         self.setWindowTitle(f"SCU Remote Desktop - Admin Panel ({self.username})")
         self.resize(1000, 700)
 
@@ -145,16 +190,19 @@ class AdminWindow(QMainWindow):
         toolbar.setObjectName("admin_toolbar")
         toolbar.setMovable(False)
 
+        # Add a spacer to push the buttons to the right
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
 
+        # Theme toggle button
         self.theme_btn = QPushButton("🌙")  # Default to dark icon
         self.theme_btn.setObjectName("theme_button")
         self.theme_btn.setToolTip("Toggle Theme")
         self.theme_btn.clicked.connect(self.toggle_theme_signal.emit)
         toolbar.addWidget(self.theme_btn)
 
+        # Logout button
         self.logout_btn = QPushButton("Logout Admin")
         self.logout_btn.setObjectName("toolbar_logout_button")
         self.logout_btn.clicked.connect(self.logout_signal.emit)
@@ -165,6 +213,7 @@ class AdminWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
+        # Tab widget for user management and logs
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
 
@@ -183,6 +232,7 @@ class AdminWindow(QMainWindow):
         self.status_bar.showMessage("Admin Panel Ready")
 
     def _build_user_tab(self):
+        """Builds the user management tab."""
         layout = QVBoxLayout(self.user_tab)
 
         # User table
@@ -220,6 +270,7 @@ class AdminWindow(QMainWindow):
         layout.addLayout(buttons_layout)
 
     def _build_logs_tab(self):
+        """Builds the logs tab."""
         layout = QVBoxLayout(self.logs_tab)
 
         # Filters
@@ -270,6 +321,7 @@ class AdminWindow(QMainWindow):
         self.log_limit = 50  # Show 50 logs per "page"
 
     def _on_add_user(self):
+        """Opens the UserEditDialog in add mode."""
         dialog = UserEditDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             data = dialog.get_data()
@@ -280,6 +332,7 @@ class AdminWindow(QMainWindow):
                 )  # Default role 'user'
 
     def _on_edit_user(self):
+        """Opens the UserEditDialog in edit mode with the selected user's data."""
         selected_items = self.users_table.selectedItems()
         if not selected_items:
             QMessageBox.warning(
@@ -304,6 +357,7 @@ class AdminWindow(QMainWindow):
                 )
 
     def _on_delete_user(self):
+        """Deletes the selected user after confirmation."""
         selected_items = self.users_table.selectedItems()
         if not selected_items:
             QMessageBox.warning(
@@ -326,6 +380,7 @@ class AdminWindow(QMainWindow):
             self.delete_user_requested.emit(user_id)
 
     def _on_fetch_logs_filtered(self):
+        """Fetches logs based on the applied filters."""
         level = self.log_level_filter.text().strip().upper() or None
         event = self.log_event_filter.text().strip().upper() or None
         user = self.log_user_filter.text().strip() or None
@@ -335,6 +390,7 @@ class AdminWindow(QMainWindow):
         )
 
     def _update_theme_icon(self, theme_name: str):
+        """Updates the theme toggle button icon based on the current theme."""
         if hasattr(self, "theme_btn"):
             if theme_name == "light":
                 self.theme_btn.setText("🌙")
@@ -345,6 +401,12 @@ class AdminWindow(QMainWindow):
 
     # Slots for AppController signals
     def update_user_list(self, users: list):
+        """
+        Updates the user table with the provided list of users.
+
+        Args:
+            users: A list of dictionaries, where each dictionary represents a user.
+        """
         self.users_table.setRowCount(0)  # Clear existing rows
         for user_data in users:
             row_position = self.users_table.rowCount()
@@ -370,6 +432,12 @@ class AdminWindow(QMainWindow):
         self.status_bar.showMessage(f"{len(users)} users loaded.")
 
     def update_log_list(self, logs: list):
+        """
+        Updates the log table with the provided list of log entries.
+
+        Args:
+            logs: A list of dictionaries, where each dictionary represents a log entry.
+        """
         self.logs_table.setRowCount(0)
         for log_entry in logs:
             row_position = self.logs_table.rowCount()
@@ -397,6 +465,13 @@ class AdminWindow(QMainWindow):
         )
 
     def show_user_operation_status(self, success: bool, message: str):
+        """
+        Displays a message box indicating the status of a user operation.
+
+        Args:
+            success: True if the operation was successful, False otherwise.
+            message: The message to display.
+        """
         if success:
             QMessageBox.information(self, "Success", message)
         else:
@@ -404,11 +479,23 @@ class AdminWindow(QMainWindow):
         self.status_bar.showMessage(message)
 
     def show_log_operation_status(self, success: bool, message: str):  # Placeholder
+        """
+        Displays a message in the status bar indicating the status of a log operation.
+
+        Args:
+            success: True if the operation was successful, False otherwise.
+            message: The message to display.
+        """
         self.status_bar.showMessage(
             message if success else f"Log operation failed: {message}"
         )
 
     def closeEvent(self, event):
+        """
+        Handles the close event of the AdminWindow.
+
+        Emits the logout signal before closing.
+        """
         log.info(f"AdminWindow for {self.username} is closing. Emitting logout_signal.")
         self.logout_signal.emit()
         super().closeEvent(event)

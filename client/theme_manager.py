@@ -1,3 +1,5 @@
+# The `ThemeManager` class manages loading, applying, and switching application themes (stylesheets)
+# in a PyQt5-based application.
 # File: remote_desktop_final/client/theme_manager.py
 
 import json
@@ -12,13 +14,22 @@ from shared.constants import DEFAULT_THEME, STYLES_DIR
 class ThemeManager(QObject):
     """
     Manages loading, applying, and switching application themes (stylesheets).
+    This class is responsible for:
+    - Loading the saved theme from a settings file.
+    - Applying the selected theme to a given widget.
+    - Saving the current theme to the settings file.
+    - Emitting a signal when the theme is changed.
     """
 
-    theme_changed = pyqtSignal(str)
+    theme_changed = pyqtSignal(str)  # Signal emitted when the theme is changed
 
-    SETTINGS_FILE = "settings.json"
+    SETTINGS_FILE = "settings.json"  # Name of the settings file
 
     def __init__(self):
+        """
+        Initializes the ThemeManager.
+        Loads the saved theme from the settings file or defaults to "dark" if no theme is saved.
+        """
         super().__init__()
         self._logger = logging.getLogger(__name__)
 
@@ -27,10 +38,21 @@ class ThemeManager(QObject):
         self._logger.info(f"ThemeManager initialized with theme: {self._current_theme}")
 
     def get_current_theme(self):
+        """
+        Returns the name of the current theme.
+
+        Returns:
+            str: The name of the current theme.
+        """
         return self._current_theme
 
     def _load_saved_theme(self):
-        """Load theme from settings file if it exists"""
+        """
+        Loads the saved theme from the settings file.
+
+        Returns:
+            str: The name of the saved theme, or None if no theme is saved or an error occurs.
+        """
         try:
             if os.path.exists(self.SETTINGS_FILE):
                 with open(self.SETTINGS_FILE, "r") as f:
@@ -44,7 +66,12 @@ class ThemeManager(QObject):
         return None
 
     def _save_theme(self, theme_name):
-        """Save current theme to settings file"""
+        """
+        Saves the current theme to the settings file.
+
+        Args:
+            theme_name (str): The name of the theme to save.
+        """
         try:
             settings = {}
             if os.path.exists(self.SETTINGS_FILE):
@@ -64,6 +91,15 @@ class ThemeManager(QObject):
             self._logger.warning(f"Failed to save theme: {e}")
 
     def _load_stylesheet_content(self, theme_name):
+        """
+        Loads the content of the stylesheet file for the given theme.
+
+        Args:
+            theme_name (str): The name of the theme.
+
+        Returns:
+            str: The content of the stylesheet file, or an empty string if the file is not found.
+        """
         # Map theme names to actual file paths
         if theme_name == "dark":
             filename = os.path.join(STYLES_DIR, "default.qss")
@@ -84,6 +120,13 @@ class ThemeManager(QObject):
             return ""
 
     def apply_theme(self, widget, theme_name):
+        """
+        Applies the given theme to the given widget.
+
+        Args:
+            widget (QWidget): The widget to apply the theme to.
+            theme_name (str): The name of the theme to apply.
+        """
         # Ensure only valid themes are applied
         if theme_name not in ["dark", "light"]:
             self._logger.warning(

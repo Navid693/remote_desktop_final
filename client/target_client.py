@@ -1,9 +1,9 @@
 # remote_desktop_final/client/target_client.py
-import datetime  # Changed
-import logging  # Added
-import socket
-import threading
-from typing import (  # Added Dict, Optional, Any, Union
+import datetime  # Provides classes for working with dates and times.
+import logging  # Provides logging functionality.
+import socket  # Provides low-level networking interface.
+import threading  # Provides support for creating and managing threads.
+from typing import (  # Provides type hinting support.
     Any,
     Callable,
     Dict,
@@ -11,46 +11,62 @@ from typing import (  # Added Dict, Optional, Any, Union
     Union,
 )
 
-from shared.protocol import PacketType, recv, send_json
+from shared.protocol import PacketType, recv, send_json  # Imports custom protocol functions and packet types.
 
-logger = logging.getLogger(__name__)  # Added
+logger = logging.getLogger(__name__)  # Initializes a logger for this module.
 
 
 class TargetClient:
+    """
+    Represents a client that acts as the target for remote control.
+
+    This class handles communication with the server, including authentication,
+    chat, permission requests, and sending/receiving frame data and input events.
+    """
+
     def __init__(self, host: str, port: int, username: str, password: str) -> None:
-        self.sock: Optional[socket.socket] = None
-        self.username: str = username
-        self.user_id: Optional[int] = None
+        """
+        Initializes a new TargetClient instance.
+
+        Args:
+            host (str): The hostname or IP address of the server.
+            port (int): The port number to connect to.
+            username (str): The username for authentication.
+            password (str): The password for authentication.
+        """
+        self.sock: Optional[socket.socket] = None  # Socket for communication with the server.
+        self.username: str = username  # Username of the target client.
+        self.user_id: Optional[int] = None  # User ID assigned by the server.
         self._chat_callback: Optional[Callable[[str, str, str], None]] = (
-            None  # sender, text, timestamp
+            None  # Callback function for handling incoming chat messages.
         )
         self._perm_request_callback: Optional[
             Callable[[str, Dict[str, bool]], Dict[str, bool]]
-        ] = None  # controller_username, requested_perms -> granted_perms
+        ] = None  # Callback for handling permission requests from the controller.
         self._connect_info_callback: Optional[Callable[[int, str], None]] = (
-            None  # session_id, peer_username
+            None  # Callback for handling connection information.
         )
         self._error_callback: Optional[Callable[[int, str, Optional[str]], None]] = (
-            None  # code, reason, peer_username_if_disconnect
+            None  # Callback for handling server errors.
         )
         self._input_data_callback: Optional[Callable[[Dict[str, Any]], None]] = (
-            None  # For receiving input events
+            None  # Callback for handling incoming input events.
         )
 
-        self.session_id: Optional[int] = None
+        self.session_id: Optional[int] = None  # Session ID for the remote control session.
         self.peer_username: Optional[str] = (
-            None  # This will be the controller's username
+            None  # Username of the controller connected to this target.
         )
 
         try:
-            self.sock = socket.create_connection((host, port))
+            self.sock = socket.create_connection((host, port))  # Creates a socket connection to the server.
             send_json(
                 self.sock,
                 PacketType.AUTH_REQ,
                 {"username": username, "password": password, "role": "target"},
-            )
-            p, auth_data = recv(self.sock)
-            if p is not PacketType.AUTH_OK:
+            )  # Sends authentication request to the server.
+            p, auth_data = recv(self.sock)  # Receives authentication response from the server.
+            if p is not PacketType.AUTH_OK:  # Checks if authentication was successful.
                 reason = (
                     auth_data.get("reason", "No reason provided")
                     if isinstance(auth_data, dict)
@@ -58,12 +74,12 @@ class TargetClient:
                 )
                 raise AssertionError(f"Auth failed: {reason}")
 
-            self.user_id = auth_data.get("user_id")
+            self.user_id = auth_data.get("user_id")  # Retrieves the user ID from the authentication data.
             # self.username already set, server confirms it via auth_data.get("username")
 
             threading.Thread(
                 target=self._reader, daemon=True, name=f"TargetClientReader-{username}"
-            ).start()
+            ).start()  # Starts a background thread to read packets from the server.
         except Exception:
             if self.sock:
                 try:
@@ -74,6 +90,14 @@ class TargetClient:
 
     # --- API ---
     def send_chat(self, text: str, sender: str = None, timestamp: str = None) -> None:
+        """
+        Sends a chat message to the connected controller (via server).
+
+        Args:
+            text (str): The text of the chat message.
+            sender (str, optional): The sender of the message. Defaults to None (which uses the client's username).
+            timestamp (str, optional): The timestamp of the message. Defaults to None (which generates a current timestamp).
+        """
         if not self.sock:
             raise ConnectionError("Not connected")
         if not timestamp:
@@ -98,7 +122,12 @@ class TargetClient:
             raise ConnectionError(f"Failed to send chat message: {str(e)}")
 
     def on_chat(self, callback: Callable[[str, str, str], None]):
-        """Register callback for incoming chat messages: callback(sender, text, timestamp)"""
+        """
+        Register callback for incoming chat messages.
+
+        Args:
+            callback (Callable[[str, str, str], None]): A function that takes sender, text, and timestamp as arguments.
+        """
         self._chat_callback = callback
 
     def on_perm_request(
@@ -106,25 +135,47 @@ class TargetClient:
     ):
         """
         Register callback for permission requests from controller.
-        callback(controller_username, requested_permissions) -> granted_permissions
+
+        Args:
+            callback (Callable[[str, Dict[str, bool]], Dict[str, bool]]): A function that takes controller_username and requested_permissions as arguments and returns granted_permissions.
         """
         self._perm_request_callback = callback
 
     def on_connect_info(self, callback: Callable[[int, str], None]):
-        """Register callback for connection info: callback(session_id, peer_username)"""
+        """
+        Register callback for connection info.
+
+        Args:
+            callback (Callable[[int, str], None]): A function that takes session_id and peer_username as arguments.
+        """
         self._connect_info_callback = callback
 
     def on_error(self, callback: Callable[[int, str, Optional[str]], None]):
-        """Register callback for server errors: callback(code, reason, peer_username_if_disconnect)"""
+        """
+        Register callback for server errors.
+
+        Args:
+            callback (Callable[[int, str, Optional[str]], None]): A function that takes code, reason, and peer_username_if_disconnect as arguments.
+        """
         self._error_callback = callback
 
     def on_input_data(self, callback: Callable[[Dict[str, Any]], None]):
-        """Register callback for incoming input data: callback(input_event_data)"""
+        """
+        Register callback for incoming input data.
+
+        Args:
+            callback (Callable[[Dict[str, Any]], None]): A function that takes input_event_data as an argument.
+        """
         self._input_data_callback = callback
         logger.info("Input data callback registered")
 
     def send_frame_data(self, frame_bytes: bytes):
-        """Send screen frame data to the server (and then to controller)."""
+        """
+        Send screen frame data to the server (and then to controller).
+
+        Args:
+            frame_bytes (bytes): The raw bytes of the screen frame.
+        """
         if not self.sock:
             raise ConnectionError("Not connected")
         # Assuming shared.protocol.send_bytes handles prepending PacketType.FRAME implicitly or explicitly
@@ -141,8 +192,8 @@ class TargetClient:
                 logger.info(f"Reader {self.username}: Socket is None, exiting.")
                 break
             try:
-                ptype, data = recv(self.sock)
-                self._handle_packet(ptype, data)
+                ptype, data = recv(self.sock)  # Receives packet type and data from the server.
+                self._handle_packet(ptype, data)  # Handles the received packet.
                 if ptype == PacketType.DISCONNECT:  # If server confirms disconnect
                     logger.info(
                         f"Reader {self.username}: Disconnect packet processed, exiting."
@@ -175,7 +226,12 @@ class TargetClient:
         logger.info(f"Reader {self.username}: Thread finished.")
 
     def _handle_disconnection_logic(self, reason: str):
-        """Central place to handle disconnection events from reader."""
+        """
+        Central place to handle disconnection events from reader.
+
+        Args:
+            reason (str): The reason for the disconnection.
+        """
         logger.info(f"Client {self.username} handling disconnection: {reason}")
         current_sock = self.sock
         if current_sock:
@@ -194,7 +250,13 @@ class TargetClient:
     def _handle_packet(
         self, ptype: PacketType, data: Union[Dict[str, Any], bytes]
     ) -> None:
-        """Handle incoming packets from the server."""
+        """
+        Handle incoming packets from the server.
+
+        Args:
+            ptype (PacketType): The type of the packet.
+            data (Union[Dict[str, Any], bytes]): The data of the packet.
+        """
         if ptype is PacketType.CHAT:
             if isinstance(data, dict) and self._chat_callback:
                 sender = data.get("sender", "Unknown")

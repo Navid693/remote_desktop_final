@@ -1,11 +1,21 @@
 # Path: client/app_controller.py
 
+"""
+AppController: Main application logic for remote desktop client.
+
+This module defines the AppController class, which acts as the central coordinator
+for user authentication, session management, permission handling, chat, remote input,
+and admin operations in the remote desktop client. It connects the UI (WindowManager)
+with the backend logic, manages signals, and handles communication with the relay server.
+"""
+
 import datetime
 import logging
 import socket
 from typing import Optional
 from urllib.parse import urlparse
 
+# Try to import Windows-specific APIs for screen dimension detection
 try:
     from win32api import GetSystemMetrics
     WINDOWS_SPECIFIC_APIS_AVAILABLE = True
@@ -13,7 +23,6 @@ except ImportError:
     GetSystemMetrics = None # type: ignore
     WINDOWS_SPECIFIC_APIS_AVAILABLE = False
     logging.warning("win32api not found. Screen dimension detection via GetSystemMetrics will be unavailable.")
-
 
 from PyQt5.QtCore import (
     QCoreApplication,
@@ -30,6 +39,7 @@ from relay_server.database import (
     Database,
 )
 
+# Try to import Pillow and pynput for screen capture and input control
 try:
     from PIL import ImageGrab
     from pynput import keyboard, mouse
@@ -41,11 +51,12 @@ except ImportError:
         "pynput or Pillow not found. Remote input control and screen scaling will not work."
     )
 
-
 logger = logging.getLogger("AppController")
 
-
 class AppSignals(QObject):
+    """
+    Defines all Qt signals used by AppController to communicate with the UI and other components.
+    """
     message_received = pyqtSignal(str, str, str)
     chat_error = pyqtSignal(str)
 
@@ -72,12 +83,24 @@ class AppSignals(QObject):
     admin_user_operation_complete = pyqtSignal(bool, str)
     admin_log_operation_complete = pyqtSignal(bool, str)
 
-
 class AppController:
+    """
+    Main application controller for the remote desktop client.
+
+    Handles user authentication, session management, permission dialogs,
+    chat, remote input, admin operations, and communication with the relay server.
+    """
+
     ADMIN_USERNAME = "admin"
     ADMIN_PASSWORD = "admin"
 
     def __init__(self, window_manager):
+        """
+        Initialize the AppController.
+
+        Args:
+            window_manager: The UI window manager instance.
+        """
         self.wm = window_manager
         self.db = Database("relay.db")
 
@@ -96,10 +119,12 @@ class AppController:
 
         self.signals = AppSignals()
 
+        # Connect UI signals to controller handlers
         self.wm.login_requested.connect(self.handle_login)
         self.wm.registration_requested.connect(self.handle_registration)
         self.wm.logout_requested.connect(self.handle_logout)
 
+        # Connect controller signals to UI slots
         self.signals.login_success.connect(self.wm.show_main_window_for_role)
         self.signals.admin_login_success.connect(self.wm.show_admin_window)
         self.signals.logout_complete.connect(self.wm.show_login_window)
@@ -133,9 +158,20 @@ class AppController:
             )
 
     def run(self):
+        """
+        Start the application by showing the login window.
+        """
         self.wm.show_login_window()
 
     def handle_registration(self, username: str, password: str, confirm: str):
+        """
+        Handle user registration logic.
+
+        Args:
+            username: The username to register.
+            password: The password.
+            confirm: The password confirmation.
+        """
         logger.info("Registering user=%s", username)
         if not username:
             self.wm.show_registration_error("Username is required.")
@@ -173,6 +209,16 @@ class AppController:
     def handle_login(
         self, backend_url: str, username: str, password: str, role: str, remember: bool
     ):
+        """
+        Handle user login logic.
+
+        Args:
+            backend_url: The relay server address.
+            username: The username.
+            password: The password.
+            role: The selected role ("controller" or "target").
+            remember: Whether to remember credentials.
+        """
         logger.info(f"Login attempt @ {backend_url} by {username} as {role}")
 
         if not backend_url.strip():
@@ -185,6 +231,7 @@ class AppController:
             self.wm.show_login_error("Password is required.")
             return
 
+        # Handle admin login (local only)
         if username == self.ADMIN_USERNAME and password == self.ADMIN_PASSWORD:
             logger.info(f"Admin login successful for {username}.")
             self.current_username = username
@@ -210,6 +257,7 @@ class AppController:
                 self.client.disconnect()
                 self.client = None
 
+            # Initialize client based on role
             if role == "controller":
                 self.client = ControllerClient(host, port, username, password)
                 self.client.on_chat(self._handle_incoming_chat)
@@ -226,10 +274,9 @@ class AppController:
                 )
                 self.client.on_error(self._handle_client_error)
                 self.client.on_input_data(self._handle_input_data)
-                if PYNPUT_AVAILABLE:  # Initialize screen dimensions for target
+                # Try to get screen dimensions for target
+                if PYNPUT_AVAILABLE:
                     try:
-                        # Try to get screen dimensions using Pillow, which is cross-platform
-                        # but might not work on all headless systems or specific configurations.
                         grab = ImageGrab.grab()
                         if grab:
                             self.target_screen_dimensions = grab.size
@@ -238,10 +285,10 @@ class AppController:
                             )
                         else:
                             logger.warning("Pillow ImageGrab.grab() returned None. Using fallback dimensions.")
-                            self.target_screen_dimensions = (1920, 1080)  # Fallback
+                            self.target_screen_dimensions = (1920, 1080)
                     except Exception as e:
                         logger.error(f"Could not get screen dimensions via Pillow: {e}. Using fallback dimensions.")
-                        self.target_screen_dimensions = (1920, 1080)  # Fallback
+                        self.target_screen_dimensions = (1920, 1080)
             else:
                 raise ValueError("Invalid role for client initialization")
 
@@ -285,6 +332,15 @@ class AppController:
             self.wm.show_login_error(f"An unexpected error occurred: {e}")
 
     def _parse_backend_url(self, backend_url: str) -> tuple[str | None, int | None]:
+        """
+        Parse the backend URL into host and port.
+
+        Args:
+            backend_url: The server address string.
+
+        Returns:
+            Tuple of (host, port) or (None, None) if invalid.
+        """
         host = None
         port = None
         try:
@@ -309,6 +365,9 @@ class AppController:
             return None, None
 
     def handle_logout(self):
+        """
+        Handle user logout logic and cleanup session state.
+        """
         logged_out_username = self.current_username
         logged_out_user_id = self.current_user_id
         logged_out_role = self.current_role
@@ -343,6 +402,12 @@ class AppController:
         logger.info("Logout process completed, 'logout_complete' signal emitted.")
 
     def request_connection_to_target(self, target_username: str):
+        """
+        Request a connection to a target user (controller role only).
+
+        Args:
+            target_username: The username of the target to connect to.
+        """
         if self.current_role == "controller" and isinstance(
             self.client, ControllerClient
         ):
@@ -369,6 +434,14 @@ class AppController:
             )
 
     def send_chat_message(self, text: str, sender: str = None, timestamp: str = None):
+        """
+        Send a chat message to the peer.
+
+        Args:
+            text: The chat message text.
+            sender: The sender username (optional).
+            timestamp: The message timestamp (optional).
+        """
         try:
             if not text:
                 return
@@ -387,6 +460,14 @@ class AppController:
             self.signals.chat_error.emit(str(e))
 
     def request_target_permissions(self, view: bool, mouse: bool, keyboard: bool):
+        """
+        Request permissions from the target user (controller role only).
+
+        Args:
+            view: Request view permission.
+            mouse: Request mouse control permission.
+            keyboard: Request keyboard control permission.
+        """
         if (
             self.current_role == "controller"
             and isinstance(self.client, ControllerClient)
@@ -412,6 +493,12 @@ class AppController:
             )
 
     def send_input_event_to_target(self, input_data: dict):
+        """
+        Send an input event (mouse/keyboard) to the target (controller role only).
+
+        Args:
+            input_data: The input event data dictionary.
+        """
         if (
             self.current_role == "controller"
             and isinstance(self.client, ControllerClient)
@@ -437,6 +524,12 @@ class AppController:
             pass
 
     def send_frame_to_controller(self, frame_bytes: bytes):
+        """
+        Send a video frame to the controller (target role only).
+
+        Args:
+            frame_bytes: The frame data as bytes.
+        """
         if (
             self.current_role == "target"
             and isinstance(self.client, TargetClient)
@@ -455,11 +548,26 @@ class AppController:
             pass
 
     def _handle_incoming_chat(self, sender: str, text: str, timestamp: str):
+        """
+        Handle incoming chat messages from the peer.
+
+        Args:
+            sender: The sender username.
+            text: The chat message text.
+            timestamp: The message timestamp.
+        """
         logger.debug(f"Incoming chat from {sender}: {text} at {timestamp}")
         if sender != self.current_username:
             self.signals.message_received.emit(sender, text, timestamp)
 
     def _handle_connect_info_controller(self, session_id: int, peer_username: str):
+        """
+        Handle connection info for the controller.
+
+        Args:
+            session_id: The session ID.
+            peer_username: The connected peer's username.
+        """
         self.session_id = session_id
         self.peer_username = peer_username
         logger.info(
@@ -468,6 +576,13 @@ class AppController:
         self.signals.connection_established.emit(peer_username, session_id)
 
     def _handle_connect_info_target(self, session_id: int, peer_username: str):
+        """
+        Handle connection info for the target.
+
+        Args:
+            session_id: The session ID.
+            peer_username: The connected peer's username.
+        """
         self.session_id = session_id
         self.peer_username = peer_username
         screen_width, screen_height = 1920, 1080 # Default/fallback
@@ -489,7 +604,6 @@ class AppController:
             self.target_screen_dimensions = (screen_width, screen_height)
             logger.warning(f"Using fallback screen dimensions: {screen_width}x{screen_height} for target.")
 
-
         logger.info(
             f"Target connected with controller {peer_username} in session {session_id} "
             f"(Effective Screen: {screen_width}x{screen_height})"
@@ -497,6 +611,12 @@ class AppController:
         self.signals.connection_established.emit(peer_username, session_id)
 
     def _handle_permission_update(self, granted_permissions: dict):
+        """
+        Handle updates to granted permissions for the controller.
+
+        Args:
+            granted_permissions: The permissions dictionary.
+        """
         self.granted_permissions = granted_permissions
         logger.info(
             f"Permissions updated for controller {self.current_username}: {granted_permissions}"
@@ -506,6 +626,16 @@ class AppController:
     def _handle_permission_request_from_controller(
         self, controller_username: str, requested_permissions: dict
     ) -> dict:
+        """
+        Handle permission request from a controller (target role).
+
+        Args:
+            controller_username: The requesting controller's username.
+            requested_permissions: The requested permissions.
+
+        Returns:
+            Dictionary of granted permissions.
+        """
         logger.info(
             f"Target {self.current_username} received PERM_REQ from {controller_username}: {requested_permissions}"
         )
@@ -550,6 +680,12 @@ class AppController:
         return granted
 
     def _receive_permission_dialog_result_from_wm(self, granted_permissions: dict):
+        """
+        Receive permission dialog result from the UI and quit the event loop.
+
+        Args:
+            granted_permissions: The granted permissions dictionary.
+        """
         logger.debug(
             f"AppController: Received permission dialog result via slot: {granted_permissions}"
         )
@@ -568,6 +704,14 @@ class AppController:
     def _handle_client_error(
         self, code: int, reason: str, peer_username_if_disconnect: str | None
     ):
+        """
+        Handle client errors and session state cleanup.
+
+        Args:
+            code: The error code.
+            reason: The error reason.
+            peer_username_if_disconnect: The peer username if disconnected.
+        """
         logger.error(
             f"Client error: code={code}, reason='{reason}', disconnected_peer='{peer_username_if_disconnect}'"
         )
@@ -595,12 +739,27 @@ class AppController:
             self.signals.session_ended.emit()
 
     def _handle_frame_data(self, frame_bytes: bytes):
+        """
+        Handle incoming frame data from the target.
+
+        Args:
+            frame_bytes: The frame data as bytes.
+        """
         if self.granted_permissions.get("view"):
             self.signals.frame_received.emit(frame_bytes)
         else:
             pass
 
     def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> tuple:
+        """
+        Convert Qt modifier key names to pynput modifier keys.
+
+        Args:
+            event_modifiers_list: List of modifier key names.
+
+        Returns:
+            Tuple of pynput modifier keys.
+        """
         modifiers = set()
         for mod in event_modifiers_list:
             if mod == "shift":
@@ -614,7 +773,12 @@ class AppController:
         return tuple(modifiers)
 
     def _handle_input_data(self, input_event_data: dict):
-        """Handle incoming input events from controller"""
+        """
+        Handle incoming input events from the controller (target role).
+
+        Args:
+            input_event_data: The input event data dictionary.
+        """
         if not PYNPUT_AVAILABLE:
             logger.warning("pynput not available - cannot handle input events")
             return
@@ -657,7 +821,6 @@ class AppController:
             else:
                 logger.warning(f"Using fallback screen dimensions for input handling: {screen_width}x{screen_height}")
                 self.target_screen_dimensions = (screen_width, screen_height) # Store fallback
-
 
             # Handle mouse events
             if event_type == "mousemove":
@@ -820,7 +983,15 @@ class AppController:
             logger.exception(f"Error handling input event: {input_event_data}")
 
     def _get_key_modifiers_for_pynput(self, event_modifiers_list: list[str]) -> set:
-        """Convert Qt modifier keys to pynput modifier keys"""
+        """
+        Convert Qt modifier keys to pynput modifier keys (set version).
+
+        Args:
+            event_modifiers_list: List of modifier key names.
+
+        Returns:
+            Set of pynput modifier keys.
+        """
         modifiers = set()
         for mod in event_modifiers_list:
             if mod == "shift":
@@ -834,6 +1005,16 @@ class AppController:
         return modifiers
 
     def _map_qt_key_to_pynput(self, qt_key_code: int, text: str):
+        """
+        Map a Qt key code and text to a pynput key.
+
+        Args:
+            qt_key_code: The Qt key code.
+            text: The key text.
+
+        Returns:
+            The corresponding pynput key or text, or None if unmapped.
+        """
         if (
             text
             and len(text) == 1
@@ -887,7 +1068,14 @@ class AppController:
         return None
 
     def _handle_pynput_key_event(self, kb_controller, event_data: dict, press: bool):
-        """Handle keyboard events by mapping Qt keys to pynput keys"""
+        """
+        Handle keyboard events by mapping Qt keys to pynput keys.
+
+        Args:
+            kb_controller: The pynput keyboard controller.
+            event_data: The event data dictionary.
+            press: True for key press, False for key release.
+        """
         try:
             qt_key_code = event_data.get("key_code")
             text = event_data.get("text", "")
@@ -974,6 +1162,12 @@ class AppController:
             logger.exception(f"Error in key event handler: {e}")
 
     def switch_role(self, new_role: str):
+        """
+        Switch the current user role and reset session state.
+
+        Args:
+            new_role: The new role to switch to.
+        """
         if self.current_role == new_role:
             logger.info(f"Already in role: {new_role}")
             return
@@ -982,6 +1176,9 @@ class AppController:
         self.signals.role_changed.emit(new_role)
 
     def admin_fetch_users(self):
+        """
+        Fetch the list of users (admin only).
+        """
         if self.current_role == "admin":
             users = self.db.list_users()
             self.signals.admin_users_fetched.emit(users)
@@ -990,6 +1187,14 @@ class AppController:
             self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
 
     def admin_add_user(self, username: str, password: str, role: str):
+        """
+        Add a new user (admin only).
+
+        Args:
+            username: The new username.
+            password: The new password.
+            role: The user role.
+        """
         if self.current_role == "admin":
             if not username or not password:
                 self.signals.admin_user_operation_complete.emit(
@@ -1015,6 +1220,14 @@ class AppController:
         new_username: Optional[str] = None,
         new_password: Optional[str] = None,
     ):
+        """
+        Edit an existing user (admin only).
+
+        Args:
+            user_id: The user ID to edit.
+            new_username: The new username (optional).
+            new_password: The new password (optional).
+        """
         if self.current_role == "admin":
             if not new_username and not new_password:
                 self.signals.admin_user_operation_complete.emit(
@@ -1036,6 +1249,12 @@ class AppController:
             self.signals.admin_user_operation_complete.emit(False, "Permission denied.")
 
     def admin_delete_user(self, user_id: int):
+        """
+        Delete a user (admin only).
+
+        Args:
+            user_id: The user ID to delete.
+        """
         if self.current_role == "admin":
             if (
                 user_id == self.current_user_id
@@ -1067,6 +1286,16 @@ class AppController:
         event: Optional[str] = None,
         user: Optional[str] = None,
     ):
+        """
+        Fetch logs from the database (admin only).
+
+        Args:
+            limit: Maximum number of logs to fetch.
+            offset: Offset for pagination.
+            level: Log level filter (optional).
+            event: Event filter (optional).
+            user: Username filter (optional).
+        """
         if self.current_role == "admin":
             logs = self.db.get_logs(limit, offset, level, event, user)
             self.signals.admin_logs_fetched.emit(logs)
