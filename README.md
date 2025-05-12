@@ -75,7 +75,7 @@ remote_desktop_final/
 ### 🔧 Step 1: Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Navid693/remote_desktop_final.git
 cd remote_desktop_final
 ```
 
@@ -169,7 +169,7 @@ SCU Remote Desktop یک برنامه اشتراک‌گذاری دسکتاپ و �
 #### 🔧 مرحله ۱: کلون کردن مخزن
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Navid693/remote_desktop_final.git
 cd remote_desktop_final
 ```
 
