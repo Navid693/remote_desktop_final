@@ -1,3 +1,4 @@
+
 # 🖥️ SCU Remote Desktop
 
 ## 📚 Language / زبان
@@ -69,30 +70,61 @@ remote_desktop_final/
 
 ---
 
-## 🚀 Installation & Run
+## 🚀 Installation & Running Guide
+
+### 🔧 Step 1: Clone the Repository
 
 ```bash
-# Clone the repo
 git clone <repository-url>
 cd remote_desktop_final
+```
 
-# Create a virtual environment
+---
+
+### 🌐 Step 2: Create & Activate Virtual Environment
+
+```bash
+# Create virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
 
-# Install requirements
+# Activate it (on Windows)
+venv\Scripts\activate
+```
+
+> 💡 *If you're using macOS/Linux:*
+```bash
+source venv/bin/activate
+```
+
+---
+
+### 📦 Step 3: Install Dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-# Run the relay server
+---
+
+### 🖧 Step 4: Run the Central Relay Server
+
+```bash
 python -m relay_server
+```
 
-# Run the client app (new terminal)
+> 🔁 Keep this terminal open to maintain server connection.
+
+---
+
+### 🖥️ Step 5: Run the Client Application (in a New Terminal)
+
+```bash
 python main.py
 ```
 
 ---
 
-## 🧪 Testing
+### ✅ Optional: Run Code Quality & Testing Tools
 
 ```bash
 pytest
@@ -134,17 +166,56 @@ SCU Remote Desktop یک برنامه اشتراک‌گذاری دسکتاپ و �
 
 ### ⚙️ نصب و اجرا
 
+#### 🔧 مرحله ۱: کلون کردن مخزن
+
 ```bash
-1. کلون مخزن
-2. ایجاد venv و فعال‌سازی آن
-3. نصب کتابخانه‌ها با pip
-4. اجرای سرور با python -m relay_server
-5. اجرای کلاینت با python main.py
+git clone <repository-url>
+cd remote_desktop_final
 ```
 
 ---
 
-### 🧪 تست و توسعه
+#### 🌐 مرحله ۲: ساخت و فعال‌سازی محیط مجازی (venv)
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+> 💡 *اگر از macOS یا Linux استفاده می‌کنید:*
+```bash
+source venv/bin/activate
+```
+
+---
+
+#### 📦 مرحله ۳: نصب وابستگی‌ها
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+#### 🖧 مرحله ۴: اجرای سرور مرکزی (Relay Server)
+
+```bash
+python -m relay_server
+```
+
+> ⚠️ این ترمینال باید باز بماند تا ارتباط برقرار بماند.
+
+---
+
+#### 🖥️ مرحله ۵: اجرای کلاینت در ترمینال جدید
+
+```bash
+python main.py
+```
+
+---
+
+#### ✅ تست و بررسی کیفیت کد (اختیاری)
 
 ```bash
 pytest
