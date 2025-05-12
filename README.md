@@ -93,11 +93,11 @@ pip install -r requirements.txt
 
 ```bash
 # Start the Relay Server
-cd relay_server
-python server.py
+cd remote_desktop_final
+python -m relay_server
 
 # Run Client Application (new terminal)
-cd ..
+cd remote_desktop_final
 python main.py
 ```
 
